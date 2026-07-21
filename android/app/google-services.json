@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "563900351599",
+    "project_id": "receiptbook-a6035",
+    "storage_bucket": "receiptbook-a6035.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:563900351599:android:46b3973c3ef3b35d15b99a",
+        "android_client_info": {
+          "package_name": "com.example.receipt_book_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAckM8zAENQeXOqItgEh3lz-bEWEuw48rE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

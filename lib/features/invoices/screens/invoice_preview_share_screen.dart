@@ -1,0 +1,150 @@
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import '../../../core/models/book_model.dart';
+import '../../../core/models/invoice_model.dart';
+import '../../../core/utils/money.dart';
+import '../services/invoice_pdf_service.dart';
+import '../services/invoice_repository.dart';
+
+/// SRS 4.5: "Generate a clean PDF invoice... Share button -> opens native
+/// share sheet... just use the OS share sheet, no need to build custom
+/// WhatsApp integration." The `printing` package's PdfPreview widget gives
+/// us the preview pane AND wires straight into `Printing.sharePdf`, which
+/// is exactly the OS share sheet.
+class InvoicePreviewShareScreen extends StatefulWidget {
+  final Invoice invoice;
+  final Book book;
+
+  const InvoicePreviewShareScreen({super.key, required this.invoice, required this.book});
+
+  @override
+  State<InvoicePreviewShareScreen> createState() => _InvoicePreviewShareScreenState();
+}
+
+class _InvoicePreviewShareScreenState extends State<InvoicePreviewShareScreen> {
+  final _invoiceRepo = InvoiceRepository();
+  late Invoice _invoice;
+  Uint8List? _pdfBytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _invoice = widget.invoice;
+    _generate();
+  }
+
+  Future<void> _generate() async {
+    final bytes = await InvoicePdfService.generate(book: widget.book, invoice: _invoice);
+    if (mounted) setState(() => _pdfBytes = bytes);
+    _uploadInBackground(bytes);
+  }
+
+  Future<void> _uploadInBackground(Uint8List bytes) async {
+    try {
+      final ref = FirebaseStorage.instance
+          .ref('invoices/${widget.book.id}/${_invoice.id}.pdf');
+      await ref.putData(bytes);
+      final url = await ref.getDownloadURL();
+      await _invoiceRepo.updatePdfUrl(_invoice.id, url);
+    } catch (_) {
+      // Non-fatal - the user can still preview/share the locally generated
+      // PDF even if the cloud copy hasn't uploaded yet.
+    }
+  }
+
+  Future<void> _setStatus(InvoiceStatus status) async {
+    switch (status) {
+      case InvoiceStatus.paid:
+        await _invoiceRepo.markPaid(_invoice);
+        break;
+      case InvoiceStatus.unpaid:
+        await _invoiceRepo.markUnpaid(_invoice);
+        break;
+      case InvoiceStatus.partial:
+        await _invoiceRepo.markPartial(_invoice);
+        break;
+    }
+    setState(() => _invoice = _invoice.copyWith(status: status));
+    if (mounted && status == InvoiceStatus.paid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Marked Paid — matching income transaction created.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_invoice.invoiceNumber),
+        actions: [
+          PopupMenuButton<InvoiceStatus>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: _setStatus,
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(value: InvoiceStatus.paid, child: Text('Mark Paid')),
+              PopupMenuItem(value: InvoiceStatus.partial, child: Text('Mark Partially Paid')),
+              PopupMenuItem(value: InvoiceStatus.unpaid, child: Text('Mark Unpaid')),
+            ],
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          _buildStatusBanner(),
+          Expanded(
+            child: _pdfBytes == null
+                ? const Center(child: CircularProgressIndicator())
+                : PdfPreview(
+                    build: (format) => _pdfBytes!,
+                    canChangeOrientation: false,
+                    canChangePageFormat: false,
+                    allowSharing: true,
+                    // Uses share_plus/OS share sheet under the hood -
+                    // WhatsApp, email, Drive, print all show up natively.
+                    actions: [
+                      PdfPreviewAction(
+                        icon: const Icon(Icons.share),
+                        onPressed: (context, build, pageFormat) async {
+                          await Printing.sharePdf(
+                            bytes: _pdfBytes!,
+                            filename: '${_invoice.invoiceNumber}.pdf',
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBanner() {
+    final color = switch (_invoice.status) {
+      InvoiceStatus.paid => Colors.green,
+      InvoiceStatus.partial => Colors.orange,
+      InvoiceStatus.unpaid => Colors.red,
+    };
+    final label = switch (_invoice.status) {
+      InvoiceStatus.paid => 'Paid',
+      InvoiceStatus.partial => 'Partially Paid',
+      InvoiceStatus.unpaid => 'Unpaid',
+    };
+    return Container(
+      width: double.infinity,
+      color: color.withOpacity(0.1),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+          Text(Money.format(_invoice.grandTotalPaise),
+              style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+}
