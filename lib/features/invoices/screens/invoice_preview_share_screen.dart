@@ -58,18 +58,24 @@ class _InvoicePreviewShareScreenState extends State<InvoicePreviewShareScreen> {
     switch (status) {
       case InvoiceStatus.paid:
         await _invoiceRepo.markPaid(_invoice);
+        setState(() => _invoice = _invoice.copyWith(
+              status: status,
+              amountReceivedPaise: _invoice.grandTotalPaise,
+            ));
         break;
       case InvoiceStatus.unpaid:
         await _invoiceRepo.markUnpaid(_invoice);
+        setState(() => _invoice = _invoice.copyWith(status: status));
         break;
       case InvoiceStatus.partial:
         await _invoiceRepo.markPartial(_invoice);
+        setState(() => _invoice = _invoice.copyWith(status: status));
         break;
     }
-    setState(() => _invoice = _invoice.copyWith(status: status));
     if (mounted && status == InvoiceStatus.paid) {
+      final kind = _invoice.billDirection == BillDirection.purchase ? 'expense' : 'income';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Marked Paid — matching income transaction created.')),
+        SnackBar(content: Text('Marked Paid — matching $kind transaction created.')),
       );
     }
   }
@@ -137,12 +143,27 @@ class _InvoicePreviewShareScreenState extends State<InvoicePreviewShareScreen> {
       width: double.infinity,
       color: color.withOpacity(0.1),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-          Text(Money.format(_invoice.grandTotalPaise),
-              style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+              Text(Money.format(_invoice.grandTotalPaise),
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          if (_invoice.amountReceivedPaise > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Received ${Money.format(_invoice.amountReceivedPaise)}'
+                '${_invoice.paymentMode != null ? ' via ${_invoice.paymentMode}' : ''}'
+                ' · Balance ${Money.format(_invoice.balanceDuePaise)}',
+                style: TextStyle(color: color.withOpacity(0.8), fontSize: 12),
+              ),
+            ),
         ],
       ),
     );

@@ -52,13 +52,13 @@ class GstEstimateCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Unpaid Invoices',
+                  const Text('Unpaid Bills',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text(Money.format(unpaidInvoicesTotalPaise),
                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  Text('$unpaidInvoicesCount invoice(s)',
+                  Text('$unpaidInvoicesCount bill(s)',
                       style: const TextStyle(fontSize: 11, color: Colors.grey)),
                 ],
               ),

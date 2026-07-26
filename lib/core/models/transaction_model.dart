@@ -5,19 +5,42 @@ class ReceiptImage {
   final DateTime uploadedAt;
   final String? localPath; // set while offline, before it's synced/uploaded
 
-  ReceiptImage({required this.imageUrl, required this.uploadedAt, this.localPath});
+  /// Original filename (e.g. "invoice_scan.pdf"). Used to pick an icon vs.
+  /// an inline image preview, and to name the file correctly once uploaded.
+  /// Null for photos captured directly via the camera (those are always
+  /// images, so isImageFile() falls back to true when this is unset).
+  final String? fileName;
+
+  ReceiptImage({
+    required this.imageUrl,
+    required this.uploadedAt,
+    this.localPath,
+    this.fileName,
+  });
+
+  static const _imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.bmp'];
+
+  /// Whether this attachment can be rendered as an inline image (camera
+  /// photos, and any picked file whose extension looks like an image).
+  /// Anything else (PDF, doc, etc.) should be shown as a generic file tile.
+  bool get isImageFile {
+    final name = (fileName ?? localPath ?? imageUrl).toLowerCase();
+    return _imageExtensions.any((ext) => name.endsWith(ext));
+  }
 
   factory ReceiptImage.fromMap(Map<String, dynamic> map) => ReceiptImage(
         imageUrl: map['imageUrl'] as String? ?? '',
         uploadedAt: DateTime.tryParse(map['uploadedAt']?.toString() ?? '') ??
             DateTime.now(),
         localPath: map['localPath'] as String?,
+        fileName: map['fileName'] as String?,
       );
 
   Map<String, dynamic> toMap() => {
         'imageUrl': imageUrl,
         'uploadedAt': uploadedAt.toIso8601String(),
         'localPath': localPath,
+        'fileName': fileName,
       };
 }
 

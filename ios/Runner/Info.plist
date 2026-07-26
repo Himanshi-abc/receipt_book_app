@@ -26,6 +26,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>ReceiptBook uses your camera to scan and attach receipts to your transactions.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>ReceiptBook uses your contacts to let you quickly add a customer or supplier from your address book.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ReceiptBook needs access to your photo library to attach receipt images to your transactions.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

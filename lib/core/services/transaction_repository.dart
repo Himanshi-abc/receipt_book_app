@@ -16,6 +16,7 @@ class TransactionRepository {
   /// sync is fire-and-forget from here.
   Future<AppTransaction> saveTransaction({
     String? id,
+    DateTime? createdAt,
     required String bookId,
     required TxType type,
     required DateTime date,
@@ -50,7 +51,11 @@ class TransactionRepository {
       receiptImages: receiptImages,
       noReceiptAvailable: noReceiptAvailable,
       noReceiptReason: noReceiptReason,
-      createdAt: now,
+      // Editing an existing transaction (id + createdAt both passed) must
+      // keep its original createdAt - this upsert would otherwise stamp a
+      // fresh one every time, since LocalDb.upsertTransaction fully
+      // replaces the stored row rather than patching individual fields.
+      createdAt: createdAt ?? now,
       updatedAt: now,
       pendingSync: true,
     );

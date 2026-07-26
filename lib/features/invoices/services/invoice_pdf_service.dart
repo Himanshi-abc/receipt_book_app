@@ -102,7 +102,9 @@ class InvoicePdfService {
                   ? 'CREDIT NOTE'
                   : invoice.docType == InvoiceDocType.debitNote
                       ? 'DEBIT NOTE'
-                      : 'TAX INVOICE',
+                      : invoice.billDirection == BillDirection.purchase
+                          ? 'PURCHASE BILL'
+                          : 'TAX INVOICE',
               style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
             ),
             pw.Text('No: ${invoice.invoiceNumber}', style: const pw.TextStyle(fontSize: 10)),
@@ -200,8 +202,18 @@ class InvoicePdfService {
               row('SGST', Money.format(totalSgst)),
             ] else
               row('IGST', Money.format(totalIgst)),
+            if (invoice.discountPaise > 0)
+              row('Discount', '- ${Money.format(invoice.discountPaise)}'),
+            if (invoice.additionalChargePaise > 0)
+              row(invoice.additionalChargeDescription?.trim().isNotEmpty == true
+                  ? invoice.additionalChargeDescription!
+                  : 'Additional Charge', Money.format(invoice.additionalChargePaise)),
             pw.Divider(),
             row('Grand Total', Money.format(invoice.grandTotalPaise), bold: true),
+            if (invoice.amountReceivedPaise > 0) ...[
+              row('Amount Received', Money.format(invoice.amountReceivedPaise)),
+              row('Balance Due', Money.format(invoice.balanceDuePaise), bold: true),
+            ],
           ],
         ),
       ),

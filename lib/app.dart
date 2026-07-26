@@ -8,7 +8,10 @@ import 'features/books/screens/add_business_book_screen.dart';
 import 'features/ledger/screens/home_ledger_screen.dart';
 import 'features/settings/screens/settings_screen.dart';
 import 'features/dashboard/screens/business_dashboard_screen.dart';
-import 'features/invoices/screens/invoice_list_screen.dart';
+import 'features/bills/screens/bill_list_screen.dart';
+import 'features/khata/screens/party_list_screen.dart';
+import 'core/models/contact_model.dart';
+import 'features/products/screens/product_list_screen.dart';
 
 class ReceiptBookApp extends StatelessWidget {
   const ReceiptBookApp({super.key});
@@ -34,7 +37,10 @@ class ReceiptBookApp extends StatelessWidget {
           '/settings': (_) => const SettingsScreen(),
           '/settings/manage-books': (_) => const ManageBooksScreen(),
           '/dashboard': (_) => const BusinessDashboardScreen(),
-          '/invoices': (_) => const InvoiceListScreen(),
+          '/bills': (_) => const BillListScreen(),
+          '/customers': (_) => const PartyListScreen(type: ContactType.customer),
+          '/suppliers': (_) => const PartyListScreen(type: ContactType.vendor),
+          '/products': (_) => const ProductListScreen(),
         },
       ),
     );

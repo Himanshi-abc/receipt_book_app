@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/models/transaction_model.dart';
+import '../../../core/models/category_model.dart';
 import '../../../core/services/transaction_repository.dart';
 import '../../../core/services/book_access_service.dart';
 import '../../../core/widgets/book_switcher.dart';
@@ -23,6 +24,8 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
   List<AppTransaction> _filtered = [];
   bool _loading = true;
   TxType? _typeFilter;
+  String? _categoryFilter;
+  bool _categoryMenuOpen = false;
 
   @override
   void didChangeDependencies() {
@@ -46,10 +49,73 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
     final query = _searchCtrl.text.trim().toLowerCase();
     _filtered = _all.where((t) {
       if (_typeFilter != null && t.type != _typeFilter) return false;
+      if (_categoryFilter != null && t.categoryId != _categoryFilter) return false;
       if (query.isEmpty) return true;
       return t.vendorOrCustomerName.toLowerCase().contains(query) ||
           (t.notes ?? '').toLowerCase().contains(query);
     }).toList();
+  }
+
+  String _categoryNameFor(String categoryId, bool isBusiness) {
+    final matches =
+        Category.defaultsFor(isBusiness).where((c) => c.id == categoryId);
+    return matches.isEmpty ? categoryId : matches.first.name;
+  }
+
+  List<Category> _categoryMenuOptions(bool isBusiness) => (_typeFilter == null
+          ? Category.defaultsFor(isBusiness)
+          : Category.defaultsFor(isBusiness).where((c) => c.type == _typeFilter))
+      .toList();
+
+  /// Individual Book only: a "Categories" tab-style dropdown, leftmost in
+  /// the filter row (before "All") - matches the underlined tab look used
+  /// elsewhere in the design (active tab in accent color with an underline).
+  Widget _buildCategoriesFilterTab(BuildContext context, bool isBusiness) {
+    final active = _categoryFilter != null || _categoryMenuOpen;
+    final accentColor = Theme.of(context).colorScheme.primary;
+    final color = active ? accentColor : Theme.of(context).textTheme.bodyLarge?.color;
+
+    return PopupMenuButton<String?>(
+      tooltip: 'Filter by category',
+      onOpened: () => setState(() => _categoryMenuOpen = true),
+      onCanceled: () => setState(() => _categoryMenuOpen = false),
+      onSelected: (value) => setState(() {
+        _categoryMenuOpen = false;
+        _categoryFilter = value;
+        _applyFilters();
+      }),
+      itemBuilder: (ctx) => [
+        const PopupMenuItem<String?>(value: null, child: Text('All categories')),
+        const PopupMenuDivider(),
+        ..._categoryMenuOptions(isBusiness)
+            .map((c) => PopupMenuItem<String?>(value: c.id, child: Text(c.name))),
+      ],
+      child: Container(
+        padding: const EdgeInsets.only(bottom: 6),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: active ? accentColor : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Categories',
+              style: TextStyle(color: color, fontWeight: FontWeight.w600),
+            ),
+            Icon(
+              _categoryMenuOpen ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+              color: color,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -57,6 +123,7 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
     final bookProvider = context.watch<BookProvider>();
     final currentBook = bookProvider.currentBook;
     final writable = bookProvider.currentBookIsWritable;
+    final isBusiness = currentBook?.isBusiness == true;
 
     return Scaffold(
       appBar: AppBar(
@@ -71,8 +138,26 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
           if (currentBook?.isBusiness == true)
             IconButton(
               icon: const Icon(Icons.receipt_long_outlined),
-              tooltip: 'Invoices',
-              onPressed: () => Navigator.pushNamed(context, '/invoices'),
+              tooltip: 'Bills',
+              onPressed: () => Navigator.pushNamed(context, '/bills'),
+            ),
+          if (currentBook?.isBusiness == true)
+            IconButton(
+              icon: const Icon(Icons.people_outline),
+              tooltip: 'Customers',
+              onPressed: () => Navigator.pushNamed(context, '/customers'),
+            ),
+          if (currentBook?.isBusiness == true)
+            IconButton(
+              icon: const Icon(Icons.local_shipping_outlined),
+              tooltip: 'Suppliers',
+              onPressed: () => Navigator.pushNamed(context, '/suppliers'),
+            ),
+          if (currentBook?.isBusiness == true)
+            IconButton(
+              icon: const Icon(Icons.inventory_2_outlined),
+              tooltip: 'Products',
+              onPressed: () => Navigator.pushNamed(context, '/products'),
             ),
           IconButton(
             icon: const Icon(Icons.settings),
@@ -99,37 +184,86 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      ChoiceChip(
-                        label: const Text('All'),
-                        selected: _typeFilter == null,
-                        onSelected: (_) => setState(() {
-                          _typeFilter = null;
-                          _applyFilters();
-                        }),
-                      ),
-                      const SizedBox(width: 8),
-                      ChoiceChip(
-                        label: const Text('Income'),
-                        selected: _typeFilter == TxType.income,
-                        onSelected: (_) => setState(() {
-                          _typeFilter = TxType.income;
-                          _applyFilters();
-                        }),
-                      ),
-                      const SizedBox(width: 8),
-                      ChoiceChip(
-                        label: const Text('Expense'),
-                        selected: _typeFilter == TxType.expense,
-                        onSelected: (_) => setState(() {
-                          _typeFilter = TxType.expense;
-                          _applyFilters();
-                        }),
-                      ),
-                    ],
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        if (!isBusiness) ...[
+                          _buildCategoriesFilterTab(context, isBusiness),
+                          const SizedBox(width: 16),
+                        ],
+                        ChoiceChip(
+                          label: const Text('All'),
+                          selected: _typeFilter == null,
+                          onSelected: (_) => setState(() {
+                            _typeFilter = null;
+                            _categoryFilter = null;
+                            _applyFilters();
+                          }),
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: const Text('Income'),
+                          selected: _typeFilter == TxType.income,
+                          onSelected: (_) => setState(() {
+                            _typeFilter = TxType.income;
+                            _categoryFilter = null;
+                            _applyFilters();
+                          }),
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: const Text('Expense'),
+                          selected: _typeFilter == TxType.expense,
+                          onSelected: (_) => setState(() {
+                            _typeFilter = TxType.expense;
+                            _categoryFilter = null;
+                            _applyFilters();
+                          }),
+                        ),
+                        if (isBusiness) ...[
+                          const SizedBox(width: 16),
+                          PopupMenuButton<String?>(
+                            icon: Icon(
+                              Icons.filter_alt,
+                              color: _categoryFilter != null
+                                  ? Theme.of(context).colorScheme.primary
+                                  : null,
+                            ),
+                            tooltip: 'Filter by category',
+                            onSelected: (value) => setState(() {
+                              _categoryFilter = value;
+                              _applyFilters();
+                            }),
+                            itemBuilder: (ctx) => [
+                              const PopupMenuItem<String?>(
+                                value: null,
+                                child: Text('All categories'),
+                              ),
+                              const PopupMenuDivider(),
+                              ..._categoryMenuOptions(isBusiness).map((c) =>
+                                  PopupMenuItem<String?>(value: c.id, child: Text(c.name))),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
+                if (_categoryFilter != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12, right: 12, top: 4),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Chip(
+                        label: Text(_categoryNameFor(_categoryFilter!, isBusiness)),
+                        onDeleted: () => setState(() {
+                          _categoryFilter = null;
+                          _applyFilters();
+                        }),
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 4),
                 Expanded(
                   child: _loading
@@ -162,9 +296,7 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
               ],
             ),
       floatingActionButton: writable
-          ? FloatingActionButton.extended(
-              icon: const Icon(Icons.add_a_photo),
-              label: const Text('Scan'),
+          ? FloatingActionButton(
               onPressed: () async {
                 await Navigator.push(
                   context,
@@ -172,6 +304,7 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
                 );
                 _load();
               },
+              child: const Icon(Icons.add),
             )
           : null,
     );

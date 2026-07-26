@@ -5,6 +5,7 @@
         android:icon="@mipmap/ic_launcher">
         <uses-permission android:name="android.permission.CAMERA"/>
         <uses-permission android:name="android.permission.INTERNET"/>
+        <uses-permission android:name="android.permission.READ_CONTACTS"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -42,6 +43,11 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Required so url_launcher can open the dialer for the "Call" button
+             on a party's ledger screen (Android 11+ package visibility). -->
+        <intent>
+            <action android:name="android.intent.action.DIAL"/>
         </intent>
     </queries>
 </manifest>
