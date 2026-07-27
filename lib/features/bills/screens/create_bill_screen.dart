@@ -8,7 +8,6 @@ import '../../../core/models/product_model.dart';
 import '../../../core/services/contact_repository.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/utils/tax_math.dart';
-import '../../invoices/screens/invoice_preview_share_screen.dart';
 import '../../invoices/services/invoice_repository.dart';
 import '../../invoices/services/tax_rule_config_repository.dart';
 import '../../khata/screens/add_party_screen.dart';
@@ -291,11 +290,18 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
             paymentMode: _paymentMode,
           );
 
+    // Just create/save and go back - no auto-opened preview. The user can
+    // see the full invoice any time from its transaction entry (Bills list
+    // or the linked Customers/Suppliers khata entry - see
+    // PartyDetailScreen._showEntryActions' "View Invoice").
     if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => InvoicePreviewShareScreen(invoice: invoice, book: widget.book)),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text('${existing == null ? 'Created' : 'Updated'} ${invoice.invoiceNumber}.'),
+        ),
       );
+      Navigator.pop(context);
     }
   }
 

@@ -4,10 +4,9 @@ import '../../auth/providers/auth_provider.dart';
 import '../../books/providers/book_provider.dart';
 import '../../../core/models/subscription_model.dart';
 
-/// P0 scaffold only covers "Manage Books" (plan/trial state + switch
-/// active book), since that's the piece the SRS calls out as safety-
-/// critical. Notifications / Security / Backup / Legal sub-screens are
-/// straightforward CRUD/UI and are left as TODOs for the next pass.
+/// Covers "Manage Books" (plan/trial state + switch active book), since
+/// that's the piece the SRS calls out as safety-critical, plus the
+/// Business Book-only Business Profile / Invoice Template screens.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
@@ -39,10 +38,6 @@ class SettingsScreen extends StatelessWidget {
             subtitle: const Text('Plan, trial status, active Business Book'),
             onTap: () => Navigator.pushNamed(context, '/settings/manage-books'),
           ),
-          const ListTile(leading: Icon(Icons.notifications), title: Text('Notifications (TODO)')),
-          const ListTile(leading: Icon(Icons.lock), title: Text('Security / App Lock (TODO)')),
-          const ListTile(leading: Icon(Icons.backup), title: Text('Backup & Export (TODO)')),
-          const ListTile(leading: Icon(Icons.gavel), title: Text('Legal / Disclaimers (TODO)')),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),

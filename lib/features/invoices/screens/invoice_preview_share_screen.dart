@@ -136,17 +136,12 @@ class _InvoicePreviewShareScreenState extends State<InvoicePreviewShareScreen> {
                     allowSharing: true,
                     // Uses share_plus/OS share sheet under the hood -
                     // WhatsApp, email, Drive, print all show up natively.
-                    actions: [
-                      PdfPreviewAction(
-                        icon: const Icon(Icons.share),
-                        onPressed: (context, build, pageFormat) async {
-                          await Printing.sharePdf(
-                            bytes: _pdfBytes!,
-                            filename: '${_invoice.invoiceNumber}.pdf',
-                          );
-                        },
-                      ),
-                    ],
+                    // No custom `actions` here - PdfPreview already adds its
+                    // own Print/Share buttons for allowPrinting/allowSharing,
+                    // so a second explicit share action just duplicated it.
+                    // canDebug defaults to true and adds a raster/vector
+                    // debug toggle switch that has no place in a real UI.
+                    canDebug: false,
                   ),
           ),
         ],

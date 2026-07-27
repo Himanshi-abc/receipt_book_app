@@ -139,10 +139,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
           _logoUrl = url;
         }
       });
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Could not upload ${isSignature ? 'signature' : 'logo'}. Try again.'),
+          content: Text('Could not upload ${isSignature ? 'signature' : 'logo'}: $e'),
+          duration: const Duration(seconds: 6),
         ));
       }
     } finally {
