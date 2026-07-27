@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
@@ -10,6 +11,8 @@ import '../../../core/utils/money.dart';
 import '../../books/providers/book_provider.dart';
 import '../../../core/models/invoice_model.dart';
 import '../../bills/screens/create_bill_screen.dart';
+import '../../invoices/screens/invoice_preview_share_screen.dart';
+import '../../invoices/services/invoice_repository.dart';
 import '../services/khata_balance.dart';
 import '../services/khata_entry_repository.dart';
 import '../services/khata_pdf_service.dart';
@@ -36,6 +39,11 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
   List<KhataEntry> _entries = [];
   List<int> _runningBalances = [];
 
+  /// Entries auto-created from a Sales/Purchase bill share their id with
+  /// that Invoice (see InvoiceRepository._syncKhataEntry) - keyed here so
+  /// tapping one can open the real invoice instead of a plain ledger row.
+  Map<String, Invoice> _invoicesById = {};
+
   bool get _isCustomer => _contact.type == ContactType.customer;
   String get _partyLabel => _isCustomer ? 'Customer' : 'Supplier';
 
@@ -47,10 +55,13 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    final book = context.read<BookProvider>().currentBook!;
     final entries = await _entryRepo.entriesForContact(_contact.id);
+    final invoices = await InvoiceRepository().watchInvoices(book.id).first;
     setState(() {
       _entries = entries;
       _runningBalances = runningBalances(entries);
+      _invoicesById = {for (final inv in invoices) inv.id: inv};
       _loading = false;
     });
   }
@@ -164,6 +175,12 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
   }
 
   Future<void> _showEntryActions(KhataEntry e) async {
+    // Entries auto-created from a Sales/Purchase bill (see
+    // InvoiceRepository._syncKhataEntry) share their id with that Invoice -
+    // route to the real invoice instead of the plain ledger row for those.
+    final invoice = _invoicesById[e.id];
+    final isInvoice = invoice != null;
+
     final action = await showModalBottomSheet<_EntryAction>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -172,17 +189,17 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.visibility_outlined),
-              title: const Text('View Invoice'),
+              title: Text(isInvoice ? 'View Invoice' : 'View Entry'),
               onTap: () => Navigator.pop(ctx, _EntryAction.view),
             ),
             ListTile(
               leading: const Icon(Icons.edit_outlined),
-              title: const Text('Edit Invoice'),
+              title: Text(isInvoice ? 'Edit Invoice' : 'Edit Entry'),
               onTap: () => Navigator.pop(ctx, _EntryAction.edit),
             ),
             ListTile(
               leading: const Icon(Icons.share_outlined),
-              title: const Text('Share Invoice'),
+              title: Text(isInvoice ? 'Share Invoice' : 'Share Entry'),
               onTap: () => Navigator.pop(ctx, _EntryAction.share),
             ),
           ],
@@ -190,6 +207,46 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
       ),
     );
     if (!mounted || action == null) return;
+
+    if (isInvoice) {
+      final book = context.read<BookProvider>().currentBook!;
+      switch (action) {
+        case _EntryAction.view:
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => InvoicePreviewShareScreen(invoice: invoice, book: book),
+            ),
+          );
+          break;
+        case _EntryAction.edit:
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CreateBillScreen(
+                book: book,
+                direction: invoice.billDirection,
+                existingInvoice: invoice,
+              ),
+            ),
+          );
+          break;
+        case _EntryAction.share:
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => InvoicePreviewShareScreen(
+                invoice: invoice,
+                book: book,
+                autoAction: PreviewAutoAction.share,
+              ),
+            ),
+          );
+          break;
+      }
+      _load();
+      return;
+    }
 
     switch (action) {
       case _EntryAction.view:
@@ -231,7 +288,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
         actions: [
           IconButton(icon: const Icon(Icons.call), tooltip: 'Call', onPressed: _call),
           IconButton(
-            icon: const Icon(Icons.chat_outlined),
+            icon: const FaIcon(FontAwesomeIcons.whatsapp),
             tooltip: 'WhatsApp',
             onPressed: _whatsapp,
           ),

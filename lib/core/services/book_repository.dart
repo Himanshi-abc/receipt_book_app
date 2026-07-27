@@ -111,4 +111,11 @@ class BookRepository {
   Future<void> archiveBook(String bookId) async {
     await _books.doc(bookId).update({'isArchived': true});
   }
+
+  /// Business Profile edits (name, GSTIN, phone, branding, addresses, bank
+  /// details, signature, etc.) - a plain partial update, same pattern as
+  /// [archiveBook]. [patch] should only contain the fields being changed.
+  Future<void> updateBook(String bookId, Map<String, dynamic> patch) async {
+    await _books.doc(bookId).update(patch);
+  }
 }

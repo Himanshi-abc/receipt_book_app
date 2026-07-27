@@ -18,7 +18,7 @@ import '../../products/services/product_repository.dart';
 const kPaymentModes = ['Cash', 'UPI', 'Card', 'Bank Transfer', 'Cheque', 'Other'];
 
 class _BillLineItemDraft {
-  final String id = const Uuid().v4();
+  final String id;
   final String? productId;
   final descCtrl = TextEditingController();
   final hsnCtrl = TextEditingController();
@@ -27,7 +27,21 @@ class _BillLineItemDraft {
   final discountCtrl = TextEditingController(text: '0');
   double taxRate;
 
-  _BillLineItemDraft({this.productId, this.taxRate = 0});
+  _BillLineItemDraft({String? id, this.productId, this.taxRate = 0}) : id = id ?? const Uuid().v4();
+
+  /// Rebuilds a draft from a previously saved line item, for editing an
+  /// existing bill - keeps the original id rather than minting a new one.
+  factory _BillLineItemDraft.fromLineItem(InvoiceLineItem li) {
+    final draft = _BillLineItemDraft(id: li.id, productId: li.productId, taxRate: li.taxRatePercent);
+    draft.descCtrl.text = li.description;
+    draft.hsnCtrl.text = li.hsnSac ?? '';
+    draft.qtyCtrl.text = li.qty == li.qty.roundToDouble()
+        ? li.qty.toStringAsFixed(0)
+        : li.qty.toString();
+    draft.rateCtrl.text = Money.paiseToEditableString(li.rateePaise);
+    draft.discountCtrl.text = li.discountPaise == 0 ? '0' : Money.paiseToEditableString(li.discountPaise);
+    return draft;
+  }
 
   InvoiceLineItem toModel() => InvoiceLineItem(
         id: id,
@@ -56,11 +70,16 @@ class CreateBillScreen extends StatefulWidget {
   /// Pre-selects this party (e.g. arriving from their khata ledger screen).
   final Contact? initialParty;
 
+  /// When set, the form opens pre-filled with this bill's data and saving
+  /// updates it in place instead of creating a new one.
+  final Invoice? existingInvoice;
+
   const CreateBillScreen({
     super.key,
     required this.book,
     required this.direction,
     this.initialParty,
+    this.existingInvoice,
   });
 
   @override
@@ -72,25 +91,51 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
   DateTime _billDate = DateTime.now();
   final List<_BillLineItemDraft> _lineItems = [];
 
-  final _discountCtrl = TextEditingController(text: '0');
+  final _discountCtrl = TextEditingController();
+  bool _discountIsPercent = false;
   final _chargeDescCtrl = TextEditingController();
-  final _chargeAmountCtrl = TextEditingController(text: '0');
-  final _amountReceivedCtrl = TextEditingController(text: '0');
+  final _chargeAmountCtrl = TextEditingController();
+  final _amountReceivedCtrl = TextEditingController();
   String? _paymentMode;
   bool _fullyPaid = false;
 
   List<double> _taxRates = const [0, 5, 12, 18, 28];
   bool _saving = false;
 
+  bool get _isEditing => widget.existingInvoice != null;
   bool get _isSales => widget.direction == BillDirection.sales;
   ContactType get _partyType => _isSales ? ContactType.customer : ContactType.vendor;
   String get _partyLabel => _isSales ? 'Customer' : 'Supplier';
 
+  /// paise -> editable string, but blank (not "0") when there's nothing to
+  /// show yet - matches the rest of the form's blank-by-default fields.
+  String _editableOrBlank(int paise) => paise == 0 ? '' : Money.paiseToEditableString(paise);
+
   @override
   void initState() {
     super.initState();
-    _selectedParty = widget.initialParty;
+    final existing = widget.existingInvoice;
+    if (existing != null) {
+      _billDate = existing.invoiceDate;
+      _lineItems.addAll(existing.lineItems.map(_BillLineItemDraft.fromLineItem));
+      _discountCtrl.text = _editableOrBlank(existing.discountPaise);
+      _chargeDescCtrl.text = existing.additionalChargeDescription ?? '';
+      _chargeAmountCtrl.text = _editableOrBlank(existing.additionalChargePaise);
+      _amountReceivedCtrl.text = _editableOrBlank(existing.amountReceivedPaise);
+      _paymentMode = existing.paymentMode;
+      _loadExistingParty(existing.customerContactId);
+    } else {
+      _selectedParty = widget.initialParty;
+    }
     _loadTaxRates();
+  }
+
+  Future<void> _loadExistingParty(String contactId) async {
+    final contacts = await ContactRepository().loadContacts(widget.book.id, type: _partyType);
+    if (!mounted) return;
+    setState(() {
+      _selectedParty = contacts.where((c) => c.id == contactId).firstOrNull;
+    });
   }
 
   Future<void> _loadTaxRates() async {
@@ -100,7 +145,12 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
 
   int get _lineItemsTotalPaise =>
       _lineItems.where((li) => li.isValid).fold(0, (a, li) => a + li.totalPaise);
-  int get _discountPaise => Money.rupeesStringToPaise(_discountCtrl.text);
+  int get _discountPaise {
+    if (!_discountIsPercent) return Money.rupeesStringToPaise(_discountCtrl.text);
+    final percent = double.tryParse(_discountCtrl.text.trim()) ?? 0;
+    return (_lineItemsTotalPaise * percent / 100).round();
+  }
+
   int get _chargePaise => Money.rupeesStringToPaise(_chargeAmountCtrl.text);
   int get _grandTotalPaise => _lineItemsTotalPaise - _discountPaise + _chargePaise;
 
@@ -207,22 +257,39 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
     }
 
     setState(() => _saving = true);
-    final invoice = await InvoiceRepository().createInvoice(
-      book: widget.book,
-      invoiceDate: _billDate,
-      customerContactId: _selectedParty!.id,
-      customerName: _selectedParty!.name,
-      customerState: widget.book.state ?? '',
-      customerGstin: _selectedParty!.gstin,
-      lineItems: validItems,
-      billDirection: widget.direction,
-      discountPaise: _discountPaise,
-      additionalChargeDescription:
-          _chargeDescCtrl.text.trim().isEmpty ? null : _chargeDescCtrl.text.trim(),
-      additionalChargePaise: _chargePaise,
-      amountReceivedPaise: Money.rupeesStringToPaise(_amountReceivedCtrl.text),
-      paymentMode: _paymentMode,
-    );
+    final existing = widget.existingInvoice;
+    final invoice = existing == null
+        ? await InvoiceRepository().createInvoice(
+            book: widget.book,
+            invoiceDate: _billDate,
+            customerContactId: _selectedParty!.id,
+            customerName: _selectedParty!.name,
+            customerState: widget.book.state ?? '',
+            customerGstin: _selectedParty!.gstin,
+            lineItems: validItems,
+            billDirection: widget.direction,
+            discountPaise: _discountPaise,
+            additionalChargeDescription:
+                _chargeDescCtrl.text.trim().isEmpty ? null : _chargeDescCtrl.text.trim(),
+            additionalChargePaise: _chargePaise,
+            amountReceivedPaise: Money.rupeesStringToPaise(_amountReceivedCtrl.text),
+            paymentMode: _paymentMode,
+          )
+        : await InvoiceRepository().updateInvoice(
+            existing: existing,
+            invoiceDate: _billDate,
+            customerContactId: _selectedParty!.id,
+            customerName: _selectedParty!.name,
+            customerState: widget.book.state ?? '',
+            customerGstin: _selectedParty!.gstin,
+            lineItems: validItems,
+            discountPaise: _discountPaise,
+            additionalChargeDescription:
+                _chargeDescCtrl.text.trim().isEmpty ? null : _chargeDescCtrl.text.trim(),
+            additionalChargePaise: _chargePaise,
+            amountReceivedPaise: Money.rupeesStringToPaise(_amountReceivedCtrl.text),
+            paymentMode: _paymentMode,
+          );
 
     if (mounted) {
       Navigator.pushReplacement(
@@ -235,7 +302,11 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_isSales ? 'New Sale' : 'New Purchase')),
+      appBar: AppBar(
+        title: Text(_isEditing
+            ? (_isSales ? 'Edit Sale' : 'Edit Purchase')
+            : (_isSales ? 'New Sale' : 'New Purchase')),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -298,11 +369,34 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
               child: Text('No products added yet.', style: TextStyle(color: Colors.grey.shade600)),
             ),
           const Divider(height: 32),
-          TextField(
-            controller: _discountCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Discount (₹, optional)'),
-            onChanged: (_) => setState(() {}),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: _discountCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: _discountIsPercent ? 'Discount (%, optional)' : 'Discount (₹, optional)',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: DropdownButtonFormField<bool>(
+                  initialValue: _discountIsPercent,
+                  decoration: const InputDecoration(labelText: 'Type'),
+                  items: const [
+                    DropdownMenuItem(value: false, child: Text('₹')),
+                    DropdownMenuItem(value: true, child: Text('%')),
+                  ],
+                  onChanged: (v) => setState(() => _discountIsPercent = v ?? false),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           TextField(
@@ -352,7 +446,7 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
             child: _saving
                 ? const SizedBox(
                     height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Create'),
+                : Text(_isEditing ? 'Save' : 'Create'),
           ),
         ],
       ),
@@ -507,7 +601,13 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
   void _filter(String query) {
     final q = query.trim().toLowerCase();
     setState(() {
-      _filtered = q.isEmpty ? _all : _all.where((p) => p.name.toLowerCase().contains(q)).toList();
+      _filtered = q.isEmpty
+          ? _all
+          : _all
+              .where((p) =>
+                  p.name.toLowerCase().contains(q) ||
+                  (p.productCode?.toString().contains(q) ?? false))
+              .toList();
     });
   }
 
@@ -541,7 +641,7 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
                     child: TextField(
                       controller: _searchCtrl,
                       decoration: const InputDecoration(
-                        hintText: 'Search products',
+                        hintText: 'Search products by name or code',
                         prefixIcon: Icon(Icons.search),
                         border: OutlineInputBorder(),
                       ),
@@ -565,6 +665,13 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
                       itemBuilder: (ctx, i) {
                         final p = _filtered[i];
                         return ListTile(
+                          leading: CircleAvatar(
+                            radius: 16,
+                            child: Text(
+                              p.productCode?.toString() ?? '-',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
                           title: Text(p.name),
                           subtitle: Text(Money.format(p.sellingPricePaise)),
                           onTap: () => Navigator.pop(context, p),
@@ -641,4 +748,8 @@ class _DeviceContactPickerSheetState extends State<_DeviceContactPickerSheet> {
       ),
     );
   }
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

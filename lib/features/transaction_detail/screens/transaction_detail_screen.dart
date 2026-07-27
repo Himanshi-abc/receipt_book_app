@@ -1,9 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/models/transaction_model.dart';
+import '../../../core/services/attachment_file_service.dart';
 import '../../../core/services/transaction_repository.dart';
 import '../../../core/utils/money.dart';
+import '../../../core/widgets/attachment_card.dart';
 import '../../books/providers/book_provider.dart';
 import '../../scan/screens/ocr_review_form_screen.dart';
 import '../../scan/services/ocr_service.dart';
@@ -73,6 +74,75 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     }
   }
 
+  Future<void> _shareAttachment(ReceiptImage img) async {
+    try {
+      await AttachmentFileService.share(img);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not share file: $e')));
+      }
+    }
+  }
+
+  Future<void> _downloadAttachment(ReceiptImage img) async {
+    try {
+      final saved = await AttachmentFileService.download(img);
+      // false means the user cancelled the save dialog - not an error, so
+      // no snackbar in that case.
+      if (saved && mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Downloaded.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not download file: $e')));
+      }
+    }
+  }
+
+  Future<void> _deleteAttachment(ReceiptImage img) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove this attachment?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (confirmed != true || _tx == null) return;
+
+    final tx = _tx!;
+    final updatedImages = tx.receiptImages.where((i) => i != img).toList();
+    await AttachmentFileService.deleteUnderlyingFile(img);
+    await _repo.saveTransaction(
+      id: tx.id,
+      createdAt: tx.createdAt,
+      bookId: tx.bookId,
+      type: tx.type,
+      date: tx.date,
+      amountPaise: tx.amountPaise,
+      taxAmountPaise: tx.taxAmountPaise,
+      vendorOrCustomerName: tx.vendorOrCustomerName,
+      contactId: tx.contactId,
+      categoryId: tx.categoryId,
+      notes: tx.notes,
+      businessUsePercent: tx.businessUsePercent,
+      taxHead: tx.taxHead,
+      receiptImages: updatedImages,
+      noReceiptAvailable: tx.noReceiptAvailable,
+      noReceiptReason: tx.noReceiptReason,
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attachment removed.')));
+    }
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final writable = context.watch<BookProvider>().currentBookIsWritable;
@@ -84,32 +154,22 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     final tx = _tx!;
     final isIncome = tx.type == TxType.income;
 
+    // Compact "one row" cards only - never a full inline preview. View
+    // (images: full-screen; other files: open externally), Share, Delete,
+    // and Download are available for every attachment, same for both book
+    // types.
     final receiptSection = tx.receiptImages.isNotEmpty
         ? tx.receiptImages
             .map((img) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: img.isImageFile
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: img.localPath != null
-                              ? Image.file(File(img.localPath!))
-                              : Image.network(img.imageUrl),
-                        )
-                      : Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.insert_drive_file, size: 32),
-                            title: Text(img.fileName ?? 'Receipt file'),
-                            subtitle: const Text('Tap to open (not previewable inline)'),
-                            onTap: () {
-                              // A full implementation would open this via
-                              // open_filex / url_launcher depending on
-                              // whether it's a local path or a Storage URL.
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('File viewer coming soon.')),
-                              );
-                            },
-                          ),
-                        ),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: AttachmentCard(
+                    fileName: AttachmentFileService.fileNameFor(img),
+                    isImage: img.isImageFile,
+                    onView: () => AttachmentFileService.view(context, img),
+                    onShare: () => _shareAttachment(img),
+                    onDelete: () => _deleteAttachment(img),
+                    onDownload: () => _downloadAttachment(img),
+                  ),
                 ))
             .toList()
         : <Widget>[

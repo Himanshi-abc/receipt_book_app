@@ -49,6 +49,7 @@ dependencies:
   # call a party from their ledger screen
   flutter_contacts: ^1.1.9+2
   url_launcher: ^6.3.0
+  font_awesome_flutter: ^11.0.0  # WhatsApp brand icon (not in Material Icons)
 
   # Products catalog: "Download stock excel" export
   excel: ^4.0.6

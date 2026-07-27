@@ -1,12 +1,12 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../../core/models/product_model.dart';
 import '../../../core/services/book_access_service.dart';
 import '../../../core/utils/money.dart';
 import '../../books/providers/book_provider.dart';
+import '../services/product_pdf_service.dart';
 import '../services/product_repository.dart';
-import '../services/stock_excel_service.dart';
 import 'add_product_screen.dart';
 
 /// Business Book only; the caller is responsible for gating navigation to
@@ -47,23 +47,39 @@ class _ProductListScreenState extends State<ProductListScreen> {
     final query = _searchCtrl.text.trim().toLowerCase();
     _filtered = query.isEmpty
         ? List<Product>.from(_all)
-        : _all.where((p) => p.name.toLowerCase().contains(query)).toList();
+        : _all
+            .where((p) =>
+                p.name.toLowerCase().contains(query) ||
+                (p.productCode?.toString().contains(query) ?? false))
+            .toList();
   }
 
-  Future<void> _downloadStockExcel() async {
+  Future<void> _downloadProductsPdf() async {
     if (_all.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Add a product first.')),
       );
       return;
     }
-    final bytes = StockExcelService.generate(_all);
-    final file = XFile.fromData(
-      bytes,
-      name: 'products.xlsx',
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
-    await Share.shareXFiles([file]);
+    final book = context.read<BookProvider>().currentBook;
+    if (book == null) return;
+    try {
+      final bytes = await ProductPdfService.generate(book: book, products: _all);
+      final path = await FilePicker.platform.saveFile(
+        fileName: 'products_${DateTime.now().millisecondsSinceEpoch}.pdf',
+        bytes: bytes,
+      );
+      // null means the user cancelled the save dialog - not an error.
+      if (path != null && mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('PDF saved.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not save PDF: $e')));
+      }
+    }
   }
 
   @override
@@ -80,9 +96,9 @@ class _ProductListScreenState extends State<ProductListScreen> {
         title: const Text('Products'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.file_download_outlined),
-            tooltip: 'Download stock excel',
-            onPressed: _downloadStockExcel,
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: 'Download product list (PDF)',
+            onPressed: _downloadProductsPdf,
           ),
         ],
       ),
@@ -95,7 +111,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   child: TextField(
                     controller: _searchCtrl,
                     decoration: InputDecoration(
-                      hintText: 'Search products by name',
+                      hintText: 'Search products by name or code',
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
@@ -120,6 +136,13 @@ class _ProductListScreenState extends State<ProductListScreen> {
                                 itemBuilder: (ctx, i) {
                                   final p = _filtered[i];
                                   return ListTile(
+                                    leading: CircleAvatar(
+                                      radius: 16,
+                                      child: Text(
+                                        p.productCode?.toString() ?? '-',
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ),
                                     title: Text(p.name),
                                     subtitle: Text(
                                       p.type == ProductItemType.product ? 'Product' : 'Service',

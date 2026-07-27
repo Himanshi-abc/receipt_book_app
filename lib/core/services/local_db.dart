@@ -6,6 +6,8 @@ import '../models/transaction_model.dart';
 import '../models/contact_model.dart';
 import '../models/khata_entry_model.dart';
 import '../models/product_model.dart';
+import '../models/category_model.dart';
+import '../models/product_category_model.dart';
 
 /// SRS Section 9 (Reliability): "never lose a transaction once the user
 /// taps Save - write to local storage first, before showing 'Saved'."
@@ -26,12 +28,14 @@ class LocalDb {
     final path = p.join(dir.path, 'receipt_book_local.db');
     _db = await openDatabase(
       path,
-      version: 3,
+      version: 5,
       onCreate: (db, version) async {
         await _createTransactionsTable(db);
         await _createContactsTable(db);
         await _createKhataEntriesTable(db);
         await _createProductsTable(db);
+        await _createCategoriesTable(db);
+        await _createProductCategoriesTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         // Only ever ADD tables here - existing tables (and any data already
@@ -44,6 +48,15 @@ class LocalDb {
         if (oldVersion < 3) {
           // v2 -> v3: added the Products catalog.
           await _createProductsTable(db);
+        }
+        if (oldVersion < 4) {
+          // v3 -> v4: added user-created categories.
+          await _createCategoriesTable(db);
+        }
+        if (oldVersion < 5) {
+          // v4 -> v5: added Product/Service categories (kept separate from
+          // Income/Expense categories).
+          await _createProductCategoriesTable(db);
         }
       },
     );
@@ -102,6 +115,33 @@ class LocalDb {
       )
     ''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_products_book ON products(bookId)');
+  }
+
+  Future<void> _createCategoriesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS categories (
+        id TEXT PRIMARY KEY,
+        bookId TEXT NOT NULL,
+        json TEXT NOT NULL,
+        pendingSync INTEGER NOT NULL DEFAULT 1,
+        updatedAt TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_categories_book ON categories(bookId)');
+  }
+
+  Future<void> _createProductCategoriesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS product_categories (
+        id TEXT PRIMARY KEY,
+        bookId TEXT NOT NULL,
+        json TEXT NOT NULL,
+        pendingSync INTEGER NOT NULL DEFAULT 1,
+        updatedAt TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_product_categories_book ON product_categories(bookId)');
   }
 
   // ---------------------------------------------------------------------
@@ -221,6 +261,14 @@ class LocalDb {
     );
   }
 
+  Future<KhataEntry?> khataEntryById(String id) async {
+    final database = await db;
+    final rows = await database.query('khata_entries', where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) return null;
+    final e = KhataEntry.fromMap(rows.first['id'] as String, jsonDecode(rows.first['json'] as String));
+    return e.isDeleted ? null : e;
+  }
+
   Future<List<KhataEntry>> khataEntriesForContact(String contactId) async {
     final database = await db;
     final rows = await database.query(
@@ -307,6 +355,99 @@ class LocalDb {
   Future<void> markProductSynced(String id) async {
     final database = await db;
     await database.update('products', {'pendingSync': 0},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ---------------------------------------------------------------------
+  // Categories (user-created, in addition to the built-in defaults)
+  // ---------------------------------------------------------------------
+
+  Future<void> upsertCategory(Category c) async {
+    final database = await db;
+    await database.insert(
+      'categories',
+      {
+        'id': c.id,
+        'bookId': c.bookId,
+        'json': jsonEncode(c.toMap()),
+        'pendingSync': c.pendingSync ? 1 : 0,
+        'updatedAt': (c.createdAt ?? DateTime.now()).toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Category>> categoriesForBook(String bookId) async {
+    final database = await db;
+    final rows = await database.query(
+      'categories',
+      where: 'bookId = ?',
+      whereArgs: [bookId],
+    );
+    return rows
+        .map((r) => Category.fromMap(r['id'] as String, jsonDecode(r['json'] as String)))
+        .where((c) => !c.isDeleted)
+        .toList();
+  }
+
+  Future<List<Category>> pendingSyncCategories() async {
+    final database = await db;
+    final rows = await database.query('categories', where: 'pendingSync = 1');
+    return rows
+        .map((r) => Category.fromMap(r['id'] as String, jsonDecode(r['json'] as String)))
+        .toList();
+  }
+
+  Future<void> markCategorySynced(String id) async {
+    final database = await db;
+    await database.update('categories', {'pendingSync': 0},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ---------------------------------------------------------------------
+  // Product Categories (kept entirely separate from Income/Expense
+  // categories above - Products/Services have their own category domain)
+  // ---------------------------------------------------------------------
+
+  Future<void> upsertProductCategory(ProductCategory c) async {
+    final database = await db;
+    await database.insert(
+      'product_categories',
+      {
+        'id': c.id,
+        'bookId': c.bookId,
+        'json': jsonEncode(c.toMap()),
+        'pendingSync': c.pendingSync ? 1 : 0,
+        'updatedAt': (c.createdAt ?? DateTime.now()).toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<ProductCategory>> productCategoriesForBook(String bookId) async {
+    final database = await db;
+    final rows = await database.query(
+      'product_categories',
+      where: 'bookId = ?',
+      whereArgs: [bookId],
+    );
+    return rows
+        .map((r) => ProductCategory.fromMap(r['id'] as String, jsonDecode(r['json'] as String)))
+        .where((c) => !c.isDeleted)
+        .toList();
+  }
+
+  Future<List<ProductCategory>> pendingSyncProductCategories() async {
+    final database = await db;
+    final rows = await database.query('product_categories', where: 'pendingSync = 1');
+    return rows
+        .map((r) => ProductCategory.fromMap(r['id'] as String, jsonDecode(r['json'] as String)))
+        .toList();
+  }
+
+  Future<void> markProductCategorySynced(String id) async {
+    final database = await db;
+    await database.update('product_categories', {'pendingSync': 0},
         where: 'id = ?', whereArgs: [id]);
   }
 }

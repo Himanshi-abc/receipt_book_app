@@ -13,10 +13,26 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isBusiness = context.watch<BookProvider>().currentBook?.isBusiness == true;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          if (isBusiness)
+            ListTile(
+              leading: const Icon(Icons.storefront_outlined),
+              title: const Text('Business Profile'),
+              subtitle: const Text('Company details shown on your invoices'),
+              onTap: () => Navigator.pushNamed(context, '/settings/business-profile'),
+            ),
+          if (isBusiness)
+            ListTile(
+              leading: const Icon(Icons.palette_outlined),
+              title: const Text('Invoice Template'),
+              subtitle: const Text('Choose how your invoices look'),
+              onTap: () => Navigator.pushNamed(context, '/settings/invoice-template'),
+            ),
           ListTile(
             leading: const Icon(Icons.menu_book),
             title: const Text('Manage Books'),

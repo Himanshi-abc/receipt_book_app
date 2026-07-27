@@ -24,7 +24,15 @@ class TransactionTile extends StatelessWidget {
       title: Text(transaction.vendorOrCustomerName.isEmpty
           ? '(No name)'
           : transaction.vendorOrCustomerName),
-      subtitle: Text(DateFormat('dd MMM yyyy').format(transaction.date)),
+      subtitle: Row(
+        children: [
+          Text(DateFormat('dd MMM yyyy').format(transaction.date)),
+          if (transaction.receiptImages.isNotEmpty) ...[
+            const SizedBox(width: 6),
+            Icon(Icons.attach_file, size: 14, color: Colors.grey.shade600),
+          ],
+        ],
+      ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,

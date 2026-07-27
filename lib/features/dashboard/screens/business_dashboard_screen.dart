@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/transaction_repository.dart';
 import '../../../core/services/book_access_service.dart';
-import '../../../core/models/invoice_model.dart';
 import '../../books/providers/book_provider.dart';
 import '../../invoices/services/invoice_repository.dart';
 import '../models/dashboard_date_range.dart';
@@ -12,7 +11,8 @@ import '../widgets/summary_numbers_row.dart';
 import '../widgets/trend_chart.dart';
 import '../widgets/expense_category_breakdown.dart';
 import '../widgets/top_contacts_list.dart';
-import '../widgets/gst_estimate_card.dart';
+import '../widgets/top_products_list.dart';
+import '../widgets/outstanding_summary_cards.dart';
 
 /// SRS 4.4 (only visible inside a Business Book) + Section 8's rule that
 /// "dashboard load" is one of the three actions gated by the shared
@@ -43,20 +43,12 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
     if (book == null) return;
     setState(() => _loading = true);
     final all = await _repo.loadTransactions(book.id);
-
-    // Unpaid invoices total/count isn't date-range-scoped in the SRS - it's
-    // simply "how much is currently outstanding" - so we take the latest
-    // snapshot rather than filtering by the dashboard's date range.
     final invoices = await _invoiceRepo.watchInvoices(book.id).first;
-    final unpaid = invoices.where((i) =>
-        i.docType == InvoiceDocType.invoice && i.status != InvoiceStatus.paid);
-    final unpaidTotal = unpaid.fold<int>(0, (a, i) => a + i.grandTotalPaise);
 
     final data = DashboardService.compute(
       allTransactions: all,
       range: _range,
-      unpaidInvoicesTotalPaise: unpaidTotal,
-      unpaidInvoicesCount: unpaid.length,
+      invoices: invoices,
     );
     if (mounted) {
       setState(() {
@@ -131,10 +123,12 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
                         child: ExpenseCategoryBreakdown(slices: _data!.expenseByCategory),
                       ),
                       const SizedBox(height: 16),
-                      GstEstimateCard(
-                        estimatedGstPayablePaise: _data!.estimatedGstPayablePaise,
-                        unpaidInvoicesTotalPaise: _data!.unpaidInvoicesTotalPaise,
-                        unpaidInvoicesCount: _data!.unpaidInvoicesCount,
+                      OutstandingSummaryCards(
+                        totalOutstandingPaise: _data!.totalOutstandingPaise,
+                        outstandingBillsCount: _data!.outstandingBillsCount,
+                        totalPendingToSuppliersPaise: _data!.totalPendingToSuppliersPaise,
+                        pendingSupplierBillsCount: _data!.pendingSupplierBillsCount,
+                        businessCashflowPaise: _data!.businessCashflowPaise,
                       ),
                       const SizedBox(height: 16),
                       _sectionCard(
@@ -150,6 +144,24 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
                             Expanded(
                               child: TopContactsList(
                                   title: 'Top Vendors', contacts: _data!.topVendors),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _sectionCard(
+                        title: 'Fast Moving & Slow Moving Products',
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TopProductsList(
+                                  title: 'Fast Moving', products: _data!.fastMovingProducts),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: TopProductsList(
+                                  title: 'Slow Moving', products: _data!.slowMovingProducts),
                             ),
                           ],
                         ),

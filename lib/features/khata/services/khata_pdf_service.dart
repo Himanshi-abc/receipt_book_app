@@ -5,6 +5,7 @@ import '../../../core/models/book_model.dart';
 import '../../../core/models/contact_model.dart';
 import '../../../core/models/khata_entry_model.dart';
 import '../../../core/utils/money.dart';
+import '../../../core/utils/pdf_fonts.dart';
 
 /// Same shape as InvoicePdfService: a single pw.Document/pw.MultiPage built
 /// from small private builder functions.
@@ -19,7 +20,7 @@ class KhataPdfService {
     required List<KhataEntry> entries,
     required List<int> runningBalances,
   }) async {
-    final doc = pw.Document();
+    final doc = pw.Document(theme: await PdfFonts.theme());
     final finalBalance = runningBalances.isEmpty ? 0 : runningBalances.last;
     final isCustomer = contact.type == ContactType.customer;
 

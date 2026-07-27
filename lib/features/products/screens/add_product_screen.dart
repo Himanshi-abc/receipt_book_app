@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../core/models/product_category_model.dart';
 import '../../../core/models/product_model.dart';
 import '../../../core/models/tax_rule_config_model.dart';
+import '../../../core/services/product_category_repository.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/utils/tax_math.dart';
 import '../../books/providers/book_provider.dart';
@@ -28,11 +30,17 @@ class _AddProductScreenState extends State<AddProductScreen> {
   late ProductItemType _type;
   late bool _priceIncludesTax;
   double? _taxRate;
-  String? _category;
+  ProductCategory? _selectedCategory;
 
   List<double> _taxRates = TaxRuleConfig.defaultRates();
-  List<String> _existingCategories = [];
+  final _categoryRepo = ProductCategoryRepository();
+  List<ProductCategory> _categories = [];
   bool _saving = false;
+
+  /// Sentinel dropdown item; selecting it opens the "new category" dialog
+  /// instead of actually being assignable as a category.
+  static final ProductCategory _createCategorySentinel =
+      ProductCategory(id: '__create_new__', bookId: '', name: '+ Create new category');
 
   bool get _isEditing => widget.existingProduct != null;
 
@@ -59,9 +67,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
     _type = existing?.type ?? ProductItemType.product;
     _priceIncludesTax = existing?.priceIncludesTax ?? false;
     _taxRate = existing?.taxRatePercent;
-    _category = existing?.category;
     _loadTaxRates();
-    _loadExistingCategories();
+    _loadCategories();
   }
 
   Future<void> _loadTaxRates() async {
@@ -75,19 +82,63 @@ class _AddProductScreenState extends State<AddProductScreen> {
     });
   }
 
-  Future<void> _loadExistingCategories() async {
+  Future<void> _loadCategories() async {
     final bookId = context.read<BookProvider>().currentBook?.id;
     if (bookId == null) return;
-    final products = await ProductRepository().loadProducts(bookId);
+    var categories = await _categoryRepo.loadCategories(bookId);
+
+    // A product saved before this list existed may carry a free-text
+    // category name that isn't a persisted ProductCategory yet - persist
+    // it now so it becomes a normal, reusable entry going forward.
+    final existingName = widget.existingProduct?.category?.trim();
+    if (existingName != null &&
+        existingName.isNotEmpty &&
+        !categories.any((c) => c.name == existingName)) {
+      final created = await _categoryRepo.createCategory(bookId: bookId, name: existingName);
+      categories = [...categories, created];
+    }
+
     if (!mounted) return;
     setState(() {
-      _existingCategories = products
-          .map((p) => p.category)
-          .whereType<String>()
-          .where((c) => c.trim().isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
+      _categories = categories;
+      if (existingName != null && existingName.isNotEmpty) {
+        _selectedCategory = categories.where((c) => c.name == existingName).firstOrNull;
+      }
+    });
+  }
+
+  Future<void> _promptCreateCategory() async {
+    final nameCtrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Create category'),
+        content: TextField(
+          controller: nameCtrl,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Category name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(nameCtrl.text.trim()),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty || !mounted) return;
+
+    final bookId = context.read<BookProvider>().currentBook?.id;
+    if (bookId == null) return;
+    final category = await _categoryRepo.createCategory(bookId: bookId, name: name);
+    if (!mounted) return;
+    setState(() {
+      _categories = [..._categories, category];
+      _selectedCategory = category;
     });
   }
 
@@ -110,11 +161,43 @@ class _AddProductScreenState extends State<AddProductScreen> {
           : Money.rupeesStringToPaise(_purchasePriceCtrl.text),
       hsnCode: _hsnCtrl.text.trim().isEmpty ? null : _hsnCtrl.text.trim(),
       unit: _unitCtrl.text.trim().isEmpty ? null : _unitCtrl.text.trim(),
-      category: _category?.trim().isEmpty == true ? null : _category?.trim(),
+      category: _selectedCategory?.name,
+      productCode: widget.existingProduct?.productCode,
     );
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _confirmAndDelete() async {
+    final existing = widget.existingProduct;
+    if (existing == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete ${_type == ProductItemType.product ? 'Product' : 'Service'}'),
+        content: Text('Delete "${existing.name}"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await ProductRepository().softDelete(existing);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${existing.name} deleted.')));
       Navigator.of(context).pop();
     }
   }
@@ -138,10 +221,26 @@ class _AddProductScreenState extends State<AddProductScreen> {
         title: Text(_isEditing
             ? (_type == ProductItemType.product ? 'Edit Product' : 'Edit Service')
             : 'Add Product'),
+        actions: [
+          if (_isEditing)
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Delete',
+              onPressed: _confirmAndDelete,
+            ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (widget.existingProduct?.productCode != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Product Code: ${widget.existingProduct!.productCode}',
+                style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+              ),
+            ),
           SegmentedButton<ProductItemType>(
             segments: const [
               ButtonSegment(value: ProductItemType.product, label: Text('Product')),
@@ -214,20 +313,23 @@ class _AddProductScreenState extends State<AddProductScreen> {
             decoration: const InputDecoration(labelText: 'Unit (optional)'),
           ),
           const SizedBox(height: 12),
-          Autocomplete<String>(
-            initialValue: TextEditingValue(text: _category ?? ''),
-            optionsBuilder: (value) {
-              if (value.text.isEmpty) return _existingCategories;
-              return _existingCategories
-                  .where((c) => c.toLowerCase().contains(value.text.toLowerCase()));
+          DropdownButtonFormField<ProductCategory>(
+            initialValue: _selectedCategory,
+            decoration: const InputDecoration(labelText: 'Category (optional)'),
+            items: [
+              ..._categories.map((c) => DropdownMenuItem(value: c, child: Text(c.name))),
+              DropdownMenuItem(
+                value: _createCategorySentinel,
+                child: Text(_createCategorySentinel.name),
+              ),
+            ],
+            onChanged: (v) {
+              if (v == _createCategorySentinel) {
+                _promptCreateCategory();
+                return;
+              }
+              setState(() => _selectedCategory = v);
             },
-            onSelected: (selection) => setState(() => _category = selection),
-            fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) => TextField(
-              controller: controller,
-              focusNode: focusNode,
-              decoration: const InputDecoration(labelText: 'Category (optional)'),
-              onChanged: (v) => _category = v,
-            ),
           ),
           const SizedBox(height: 24),
           FilledButton(
@@ -241,4 +343,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
       ),
     );
   }
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

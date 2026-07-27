@@ -13,6 +13,22 @@ class ProductRepository {
 
   CollectionReference<Map<String, dynamic>> get _products => _db.collection('products');
 
+  /// Per-book Product Code: the smallest number starting from 1 that isn't
+  /// already used by an active (non-deleted) product. Deliberately not a
+  /// monotonically-increasing counter - that would never let a deleted
+  /// product's code be reused. LocalDb.productsForBook already excludes
+  /// soft-deleted products, so a freed code shows up as available again as
+  /// soon as its product is deleted.
+  Future<int> _nextProductCode(String bookId) async {
+    final products = await LocalDb.instance.productsForBook(bookId);
+    final usedCodes = products.map((p) => p.productCode).whereType<int>().toSet();
+    var candidate = 1;
+    while (usedCodes.contains(candidate)) {
+      candidate++;
+    }
+    return candidate;
+  }
+
   Future<Product> saveProduct({
     String? id,
     DateTime? createdAt,
@@ -26,8 +42,14 @@ class ProductRepository {
     String? hsnCode,
     String? unit,
     String? category,
+    int? productCode,
   }) async {
     final now = DateTime.now();
+    // Only ever assigned once, when the product is first created - editing
+    // an existing product (id already set) always carries its code forward
+    // via the productCode param the caller passes back in.
+    final isNew = id == null;
+    final code = isNew ? (productCode ?? await _nextProductCode(bookId)) : productCode;
     final product = Product(
       id: id ?? _uuid.v4(),
       bookId: bookId,
@@ -40,6 +62,7 @@ class ProductRepository {
       hsnCode: hsnCode,
       unit: unit,
       category: category,
+      productCode: code,
       createdAt: createdAt ?? now,
       updatedAt: now,
       pendingSync: true,

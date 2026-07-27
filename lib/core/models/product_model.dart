@@ -20,6 +20,11 @@ class Product {
   /// handled in the UI via autocomplete over the book's already-used values.
   final String? category;
 
+  /// Sequential per-book code assigned at creation (1, 2, 3, ...) - see
+  /// ProductRepository._nextProductCode. Null only for products saved
+  /// before this field existed.
+  final int? productCode;
+
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isDeleted;
@@ -37,6 +42,7 @@ class Product {
     this.hsnCode,
     this.unit,
     this.category,
+    this.productCode,
     required this.createdAt,
     required this.updatedAt,
     this.isDeleted = false,
@@ -57,6 +63,7 @@ class Product {
       hsnCode: map['hsnCode'] as String?,
       unit: map['unit'] as String?,
       category: map['category'] as String?,
+      productCode: (map['productCode'] as num?)?.toInt(),
       createdAt: DateTime.tryParse(map['createdAt']?.toString() ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(map['updatedAt']?.toString() ?? '') ?? DateTime.now(),
       isDeleted: map['isDeleted'] as bool? ?? false,
@@ -75,6 +82,7 @@ class Product {
         'hsnCode': hsnCode,
         'unit': unit,
         'category': category,
+        'productCode': productCode,
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
         'isDeleted': isDeleted,
@@ -91,6 +99,7 @@ class Product {
     String? hsnCode,
     String? unit,
     String? category,
+    int? productCode,
     DateTime? updatedAt,
     bool? isDeleted,
     bool? pendingSync,
@@ -107,6 +116,7 @@ class Product {
       hsnCode: hsnCode ?? this.hsnCode,
       unit: unit ?? this.unit,
       category: category ?? this.category,
+      productCode: productCode ?? this.productCode,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
       isDeleted: isDeleted ?? this.isDeleted,

@@ -74,9 +74,22 @@ class KhataEntryRepository {
     return LocalDb.instance.khataEntriesForBook(bookId);
   }
 
+  Future<KhataEntry?> entryById(String id) {
+    return LocalDb.instance.khataEntryById(id);
+  }
+
   Future<void> softDelete(KhataEntry e) async {
     final updated = e.copyWith(isDeleted: true, pendingSync: true);
     await LocalDb.instance.upsertKhataEntry(updated);
     _trySyncOne(updated);
+  }
+
+  /// Same as [softDelete] but by id alone, for callers (e.g.
+  /// InvoiceRepository) that only have the id and shouldn't need to load
+  /// the full entry first. A no-op if no entry with this id exists.
+  Future<void> deleteById(String id) async {
+    final existing = await entryById(id);
+    if (existing == null) return;
+    await softDelete(existing);
   }
 }

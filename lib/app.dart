@@ -5,7 +5,10 @@ import 'features/auth/screens/login_screen.dart';
 import 'features/books/providers/book_provider.dart';
 import 'features/books/screens/first_time_setup_screen.dart';
 import 'features/books/screens/add_business_book_screen.dart';
+import 'features/books/screens/business_profile_screen.dart';
+import 'features/invoices/screens/invoice_template_screen.dart';
 import 'features/ledger/screens/home_ledger_screen.dart';
+import 'features/ledger/screens/register_screen.dart';
 import 'features/settings/screens/settings_screen.dart';
 import 'features/dashboard/screens/business_dashboard_screen.dart';
 import 'features/bills/screens/bill_list_screen.dart';
@@ -33,9 +36,12 @@ class ReceiptBookApp extends StatelessWidget {
         home: const _RootGate(),
         routes: {
           '/home': (_) => const HomeLedgerScreen(),
+          '/register': (_) => const RegisterScreen(),
           '/add-business-book': (_) => const AddBusinessBookScreen(),
           '/settings': (_) => const SettingsScreen(),
           '/settings/manage-books': (_) => const ManageBooksScreen(),
+          '/settings/business-profile': (_) => const BusinessProfileScreen(),
+          '/settings/invoice-template': (_) => const InvoiceTemplateScreen(),
           '/dashboard': (_) => const BusinessDashboardScreen(),
           '/bills': (_) => const BillListScreen(),
           '/customers': (_) => const PartyListScreen(type: ContactType.customer),

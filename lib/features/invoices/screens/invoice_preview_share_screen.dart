@@ -8,6 +8,12 @@ import '../../../core/utils/money.dart';
 import '../services/invoice_pdf_service.dart';
 import '../services/invoice_repository.dart';
 
+/// Which action (if any) to fire automatically once the PDF is generated -
+/// lets the bill list's "Share Invoice" / "Print Invoice" menu entries jump
+/// straight to that action instead of making the user tap it again from
+/// inside the preview.
+enum PreviewAutoAction { none, share, print }
+
 /// SRS 4.5: "Generate a clean PDF invoice... Share button -> opens native
 /// share sheet... just use the OS share sheet, no need to build custom
 /// WhatsApp integration." The `printing` package's PdfPreview widget gives
@@ -16,8 +22,14 @@ import '../services/invoice_repository.dart';
 class InvoicePreviewShareScreen extends StatefulWidget {
   final Invoice invoice;
   final Book book;
+  final PreviewAutoAction autoAction;
 
-  const InvoicePreviewShareScreen({super.key, required this.invoice, required this.book});
+  const InvoicePreviewShareScreen({
+    super.key,
+    required this.invoice,
+    required this.book,
+    this.autoAction = PreviewAutoAction.none,
+  });
 
   @override
   State<InvoicePreviewShareScreen> createState() => _InvoicePreviewShareScreenState();
@@ -39,6 +51,20 @@ class _InvoicePreviewShareScreenState extends State<InvoicePreviewShareScreen> {
     final bytes = await InvoicePdfService.generate(book: widget.book, invoice: _invoice);
     if (mounted) setState(() => _pdfBytes = bytes);
     _uploadInBackground(bytes);
+    await _runAutoAction(bytes);
+  }
+
+  Future<void> _runAutoAction(Uint8List bytes) async {
+    switch (widget.autoAction) {
+      case PreviewAutoAction.share:
+        await Printing.sharePdf(bytes: bytes, filename: '${_invoice.invoiceNumber}.pdf');
+        break;
+      case PreviewAutoAction.print:
+        await Printing.layoutPdf(onLayout: (_) async => bytes, name: _invoice.invoiceNumber);
+        break;
+      case PreviewAutoAction.none:
+        break;
+    }
   }
 
   Future<void> _uploadInBackground(Uint8List bytes) async {

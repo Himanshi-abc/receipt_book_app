@@ -5,21 +5,49 @@ class Category {
   final String? bookId; // null if system default
   final String name;
   final TxType type;
+  final DateTime? createdAt;
+  final bool isDeleted;
+  final bool pendingSync;
 
-  Category({required this.id, this.bookId, required this.name, required this.type});
+  Category({
+    required this.id,
+    this.bookId,
+    required this.name,
+    required this.type,
+    this.createdAt,
+    this.isDeleted = false,
+    this.pendingSync = false,
+  });
+
   factory Category.fromMap(String id, Map<String, dynamic> map) => Category(
         id: id,
         bookId: map['bookId'] as String?,
         name: map['name'] as String? ?? '',
         type: TxType.values.firstWhere((e) => e.name == map['type'],
             orElse: () => TxType.expense),
+        createdAt: DateTime.tryParse(map['createdAt']?.toString() ?? ''),
+        isDeleted: map['isDeleted'] as bool? ?? false,
+        pendingSync: map['pendingSync'] as bool? ?? false,
       );
 
   Map<String, dynamic> toMap() => {
         'bookId': bookId,
         'name': name,
         'type': type.name,
+        'createdAt': (createdAt ?? DateTime.now()).toIso8601String(),
+        'isDeleted': isDeleted,
+        'pendingSync': pendingSync,
       };
+
+  Category copyWith({bool? isDeleted, bool? pendingSync}) => Category(
+        id: id,
+        bookId: bookId,
+        name: name,
+        type: type,
+        createdAt: createdAt,
+        isDeleted: isDeleted ?? this.isDeleted,
+        pendingSync: pendingSync ?? this.pendingSync,
+      );
 
   /// System defaults shown before any custom categories are loaded.
   /// SRS 3: "Rent, Travel, Office Supplies, Sales, Salary Income" etc.

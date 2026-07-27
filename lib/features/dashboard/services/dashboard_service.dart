@@ -1,5 +1,6 @@
 import '../../../core/models/transaction_model.dart';
 import '../../../core/models/category_model.dart';
+import '../../../core/models/invoice_model.dart';
 import '../models/dashboard_date_range.dart';
 import '../models/dashboard_data.dart';
 
@@ -15,15 +16,12 @@ class DashboardService {
     required List<AppTransaction> allTransactions,
     required DashboardDateRange range,
     List<Category> categories = const [],
-    int unpaidInvoicesTotalPaise = 0,
-    int unpaidInvoicesCount = 0,
+    List<Invoice> invoices = const [],
   }) {
     final txs = allTransactions.where((t) => range.contains(t.date)).toList();
 
     int totalIncome = 0;
     int totalExpense = 0;
-    int outputTax = 0; // GST collected on sales (income)
-    int inputTax = 0; // GST paid on purchases (expense) - input credit
 
     final Map<String, int> categoryTotals = {}; // categoryId/name -> paise
     final Map<String, int> customerTotals = {}; // income
@@ -32,7 +30,6 @@ class DashboardService {
     for (final t in txs) {
       if (t.type == TxType.income) {
         totalIncome += t.amountPaise;
-        outputTax += t.taxAmountPaise;
         if (t.vendorOrCustomerName.isNotEmpty) {
           customerTotals[t.vendorOrCustomerName] =
               (customerTotals[t.vendorOrCustomerName] ?? 0) + t.amountPaise;
@@ -44,7 +41,6 @@ class DashboardService {
             ? (t.amountPaise * t.businessUsePercent! / 100).round()
             : t.amountPaise;
         totalExpense += businessShare;
-        inputTax += t.taxAmountPaise;
         if (t.vendorOrCustomerName.isNotEmpty) {
           vendorTotals[t.vendorOrCustomerName] =
               (vendorTotals[t.vendorOrCustomerName] ?? 0) + businessShare;
@@ -69,6 +65,43 @@ class DashboardService {
         .toList()
       ..sort((a, b) => b.amountPaise.compareTo(a.amountPaise));
 
+    // Unpaid bills, split by direction - "till date", not range-scoped
+    // (see DashboardData's doc comment for why).
+    final invoiceDocs = invoices.where((i) => i.docType == InvoiceDocType.invoice);
+    final allSales = invoiceDocs.where((i) => i.billDirection == BillDirection.sales).toList();
+    final allPurchase =
+        invoiceDocs.where((i) => i.billDirection == BillDirection.purchase).toList();
+    final unpaidSales = allSales.where((i) => i.status != InvoiceStatus.paid).toList();
+    final unpaidPurchase = allPurchase.where((i) => i.status != InvoiceStatus.paid).toList();
+    final totalOutstanding = unpaidSales.fold<int>(0, (a, i) => a + i.balanceDuePaise);
+    final totalPendingToSuppliers = unpaidPurchase.fold<int>(0, (a, i) => a + i.balanceDuePaise);
+
+    // "Business Cashflow" - actual cash received/paid, till date, regardless
+    // of a bill's paid/partial/unpaid status (see DashboardData.
+    // businessCashflowPaise).
+    final totalReceivedFromCustomers =
+        allSales.fold<int>(0, (a, i) => a + i.amountReceivedPaise);
+    final totalPaidToSuppliers = allPurchase.fold<int>(0, (a, i) => a + i.amountReceivedPaise);
+
+    // Fast/Slow Moving Products - quantity sold on Sales invoices within
+    // the selected date range, grouped by line-item description (already
+    // denormalized onto the line item, so no Product join is needed).
+    final Map<String, double> qtyByProduct = {};
+    for (final inv in invoices) {
+      if (inv.docType != InvoiceDocType.invoice) continue;
+      if (inv.billDirection != BillDirection.sales) continue;
+      if (!range.contains(inv.invoiceDate)) continue;
+      for (final li in inv.lineItems) {
+        final name = li.description.trim();
+        if (name.isEmpty) continue;
+        qtyByProduct[name] = (qtyByProduct[name] ?? 0) + li.qty;
+      }
+    }
+    final rankedByQty = qtyByProduct.entries
+        .map((e) => ProductQty(name: e.key, qty: e.value))
+        .toList()
+      ..sort((a, b) => b.qty.compareTo(a.qty));
+
     return DashboardData(
       totalIncomePaise: totalIncome,
       totalExpensePaise: totalExpense,
@@ -76,12 +109,14 @@ class DashboardService {
       expenseByCategory: expenseByCategory,
       topCustomers: topCustomers.take(5).toList(),
       topVendors: topVendors.take(5).toList(),
-      // "Estimate only" per SRS 4.4 - real filing must reconcile against
-      // actual GST returns; this is sales tax collected minus purchase
-      // input tax credit for the selected period only.
-      estimatedGstPayablePaise: (outputTax - inputTax).clamp(0, 1 << 62),
-      unpaidInvoicesTotalPaise: unpaidInvoicesTotalPaise,
-      unpaidInvoicesCount: unpaidInvoicesCount,
+      fastMovingProducts: rankedByQty.take(10).toList(),
+      slowMovingProducts: rankedByQty.reversed.take(10).toList(),
+      totalOutstandingPaise: totalOutstanding,
+      outstandingBillsCount: unpaidSales.length,
+      totalPendingToSuppliersPaise: totalPendingToSuppliers,
+      pendingSupplierBillsCount: unpaidPurchase.length,
+      totalReceivedFromCustomersPaise: totalReceivedFromCustomers,
+      totalPaidToSuppliersPaise: totalPaidToSuppliers,
     );
   }
 

@@ -24,6 +24,14 @@ class ContactTotal {
   ContactTotal({required this.name, required this.amountPaise});
 }
 
+/// A product/service name plus a quantity - used for the Fast/Slow Moving
+/// Products lists (quantity sold, from Sales invoice line items).
+class ProductQty {
+  final String name;
+  final double qty;
+  ProductQty({required this.name, required this.qty});
+}
+
 class DashboardData {
   final int totalIncomePaise;
   final int totalExpensePaise;
@@ -34,15 +42,31 @@ class DashboardData {
   final List<ContactTotal> topCustomers;
   final List<ContactTotal> topVendors;
 
-  /// SRS 4.4: "Estimated GST payable (sales tax collected minus purchase
-  /// tax paid) - clearly labeled 'estimate only'."
-  final int estimatedGstPayablePaise;
+  /// Top 10 / bottom 10 products by quantity sold on Sales invoices within
+  /// the selected date range (same window as the rest of the dashboard).
+  final List<ProductQty> fastMovingProducts;
+  final List<ProductQty> slowMovingProducts;
 
-  /// SRS 4.4: unpaid invoices total + count. Zero until the Invoice
-  /// Generator (with its own Invoice model) is built - wired here so the
-  /// dashboard UI doesn't need to change when that lands.
-  final int unpaidInvoicesTotalPaise;
-  final int unpaidInvoicesCount;
+  /// Unpaid bills, split by direction - both "till date" (not scoped to
+  /// the dashboard's selected date range, since "how much is currently
+  /// outstanding" is a point-in-time fact, not a period one). Amounts are
+  /// the remaining balance due, not the full invoice total, so a partially
+  /// paid bill only counts what's actually still owed.
+  final int totalOutstandingPaise; // unpaid/partial Sales invoices - owed TO the business
+  final int outstandingBillsCount;
+  final int totalPendingToSuppliersPaise; // unpaid/partial Purchase bills - owed BY the business
+  final int pendingSupplierBillsCount;
+
+  /// Also "till date", same as the pair above: total money actually
+  /// received against Sales invoices and actually paid against Purchase
+  /// bills (Invoice.amountReceivedPaise, summed regardless of paid/partial/
+  /// unpaid status - it's real cash movement, not what's still owed).
+  final int totalReceivedFromCustomersPaise;
+  final int totalPaidToSuppliersPaise;
+
+  /// "Business Cashflow": what actually moved, not what's owed. Positive
+  /// means more cash came in from customers than went out to suppliers.
+  int get businessCashflowPaise => totalReceivedFromCustomersPaise - totalPaidToSuppliersPaise;
 
   DashboardData({
     required this.totalIncomePaise,
@@ -51,9 +75,14 @@ class DashboardData {
     required this.expenseByCategory,
     required this.topCustomers,
     required this.topVendors,
-    required this.estimatedGstPayablePaise,
-    this.unpaidInvoicesTotalPaise = 0,
-    this.unpaidInvoicesCount = 0,
+    this.fastMovingProducts = const [],
+    this.slowMovingProducts = const [],
+    this.totalOutstandingPaise = 0,
+    this.outstandingBillsCount = 0,
+    this.totalPendingToSuppliersPaise = 0,
+    this.pendingSupplierBillsCount = 0,
+    this.totalReceivedFromCustomersPaise = 0,
+    this.totalPaidToSuppliersPaise = 0,
   });
 
   static DashboardData empty() => DashboardData(
@@ -63,6 +92,5 @@ class DashboardData {
         expenseByCategory: [],
         topCustomers: [],
         topVendors: [],
-        estimatedGstPayablePaise: 0,
       );
 }

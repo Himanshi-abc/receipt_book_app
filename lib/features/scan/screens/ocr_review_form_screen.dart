@@ -8,7 +8,10 @@ import 'package:uuid/uuid.dart';
 import '../../../core/models/transaction_model.dart';
 import '../../../core/models/category_model.dart';
 import '../../../core/utils/money.dart';
+import '../../../core/services/attachment_file_service.dart';
 import '../../../core/services/transaction_repository.dart';
+import '../../../core/services/category_repository.dart';
+import '../../../core/widgets/attachment_card.dart';
 import '../../books/providers/book_provider.dart';
 import '../services/ocr_service.dart';
 
@@ -25,9 +28,15 @@ import '../services/ocr_service.dart';
 ///   Vendor/Payer name are mandatory. No tax-amount field. No "no receipt +
 ///   reason" flow - the receipt attachment is just another optional field,
 ///   placed in the normal field order rather than as a special step.
-/// - Business Book: unchanged from the original SRS 8 behavior - tax
-///   amount field present, and a receipt is required unless the user
-///   explicitly checks "no receipt available" and gives a reason.
+/// - Business Book (Income and Expense): no tax-amount field, no
+///   "business use %" field, and no "no receipt available" bypass - a
+///   receipt is always required. The Category dropdown has no built-in
+///   categories at all (kept fully separate from the Individual Book's
+///   defaults) - only categories the user has created for this book, plus
+///   an option to create a new one (of the matching Income/Expense type)
+///   on the spot. Every new Business Book is seeded with one seed
+///   customer contact (named after the business) and one seed Income
+///   category ("Daily Counter") - see [BookProvider.createBusinessBook].
 class OcrReviewFormScreen extends StatefulWidget {
   final TxType type;
   final File? imageFile;
@@ -52,16 +61,25 @@ class OcrReviewFormScreen extends StatefulWidget {
 class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
   late DateTime _date;
   late final TextEditingController _amountCtrl;
-  late final TextEditingController _taxCtrl;
   late final TextEditingController _vendorCtrl;
   final _notesCtrl = TextEditingController();
 
   Category? _category;
-  int _businessUsePercent = 100;
   File? _pickedReceiptFile; // chosen via "Choose File" - any format, alternative to camera
-  bool _noReceipt = false;
-  final _noReceiptReasonCtrl = TextEditingController();
   bool _saving = false;
+
+  /// True once the user taps Delete on the OCR-captured photo
+  /// (widget.imageFile) - that field is final/passed in, so removal is
+  /// tracked here instead of by nulling it out.
+  bool _ocrImageRemoved = false;
+
+  final _categoryRepo = CategoryRepository();
+  List<Category> _customCategories = [];
+
+  /// Sentinel dropdown item; selecting it opens the "new category" dialog
+  /// instead of actually being assignable as a category.
+  static final Category _createCategorySentinel =
+      Category(id: '__create_new__', name: '+ Create new category', type: TxType.expense);
 
   /// Receipts already attached to the transaction being edited. Carried
   /// forward on save unless the user picks a replacement file.
@@ -81,31 +99,82 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
               ? Money.paiseToEditableString(widget.ocrResult.amountPaise!)
               : '',
     );
-    _taxCtrl = TextEditingController(
-      text: existing != null
-          ? Money.paiseToEditableString(existing.taxAmountPaise)
-          : widget.ocrResult.taxAmountPaise != null
-              ? Money.paiseToEditableString(widget.ocrResult.taxAmountPaise!)
-              : '',
-    );
     _vendorCtrl =
         TextEditingController(text: existing?.vendorOrCustomerName ?? widget.ocrResult.vendorName ?? '');
     if (existing != null) {
       _notesCtrl.text = existing.notes ?? '';
-      _businessUsePercent = existing.businessUsePercent ?? 100;
-      _noReceipt = existing.noReceiptAvailable;
-      _noReceiptReasonCtrl.text = existing.noReceiptReason ?? '';
       _keptExistingReceiptImages = existing.receiptImages;
-      final isBusiness = context.read<BookProvider>().currentBook?.isBusiness == true;
-      _category = _categoryOptions(isBusiness)
-          .where((c) => c.id == existing.categoryId)
-          .firstOrNull;
     }
+    _loadCustomCategories();
   }
 
-  List<Category> _categoryOptions(bool isBusiness) => Category.defaultsFor(isBusiness)
-      .where((c) => c.type == widget.type)
-      .toList();
+  bool get _isIncome => widget.type == TxType.income;
+
+  Future<void> _loadCustomCategories() async {
+    final book = context.read<BookProvider>().currentBook;
+    if (book == null) return;
+    final categories = await _categoryRepo.loadCategories(book.id);
+    if (!mounted) return;
+    setState(() {
+      _customCategories = categories.where((c) => c.type == widget.type).toList();
+      final existing = widget.existingTransaction;
+      if (existing != null) {
+        _category = _categoryOptions(book.isBusiness)
+            .where((c) => c.id == existing.categoryId)
+            .firstOrNull;
+      }
+    });
+  }
+
+  /// Business Book (Income and Expense) has no built-in categories at all -
+  /// kept fully separate from the Individual Book's own defaults - only
+  /// categories the user has created for this book are offered.
+  List<Category> _categoryOptions(bool isBusiness) => [
+        if (!isBusiness) ...Category.defaultsFor(isBusiness).where((c) => c.type == widget.type),
+        ..._customCategories,
+      ];
+
+  /// Business Book only: lets the user create their own Income/Expense
+  /// category (matching this form's [widget.type]) on the spot.
+  Future<void> _promptCreateCategory() async {
+    final label = _isIncome ? 'income' : 'expense';
+    final nameCtrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Create $label category'),
+        content: TextField(
+          controller: nameCtrl,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Category name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(nameCtrl.text.trim()),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty || !mounted) return;
+
+    final book = context.read<BookProvider>().currentBook;
+    if (book == null) return;
+    final category = await _categoryRepo.createCategory(
+      bookId: book.id,
+      name: name,
+      type: widget.type,
+    );
+    if (!mounted) return;
+    setState(() {
+      _customCategories = [..._customCategories, category];
+      _category = category;
+    });
+  }
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -125,12 +194,11 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
     if (result == null || result.files.single.path == null) return;
     setState(() {
       _pickedReceiptFile = File(result.files.single.path!);
-      _noReceipt = false; // mutually exclusive with "no receipt available" (Business Book)
     });
   }
 
   bool get _hasAnyReceipt =>
-      widget.imageFile != null ||
+      (widget.imageFile != null && !_ocrImageRemoved) ||
       _pickedReceiptFile != null ||
       _keptExistingReceiptImages.isNotEmpty;
 
@@ -138,14 +206,11 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
     if (_amountCtrl.text.trim().isEmpty) return false;
     if (_vendorCtrl.text.trim().isEmpty) return false;
     if (!isBusiness) return true; // Individual Book: nothing else required
-    // Business Book keeps the original SRS 8 rule: receipt required unless
-    // "no receipt" is checked with a reason.
-    if (!_noReceipt && !_hasAnyReceipt) return false;
-    if (_noReceipt && _noReceiptReasonCtrl.text.trim().isEmpty) return false;
-    return true;
+    // Business Book (Income and Expense): receipt is always required, no bypass.
+    return _hasAnyReceipt;
   }
 
-  Future<void> _save(bool isBusiness) async {
+  Future<void> _save() async {
     setState(() => _saving = true);
     final bookProvider = context.read<BookProvider>();
     final book = bookProvider.currentBook!;
@@ -154,7 +219,8 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
     // Upload receipt photo/file in the background; don't block the local
     // save on it (offline-first - SRS Section 9).
     List<ReceiptImage> images = _keptExistingReceiptImages;
-    final receiptFile = widget.imageFile ?? _pickedReceiptFile;
+    final receiptFile =
+        (widget.imageFile != null && !_ocrImageRemoved) ? widget.imageFile : _pickedReceiptFile;
     if (receiptFile != null) {
       images = [
         ReceiptImage(
@@ -174,14 +240,11 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
       type: widget.type,
       date: _date,
       amountPaise: Money.rupeesStringToPaise(_amountCtrl.text),
-      taxAmountPaise: isBusiness ? Money.rupeesStringToPaise(_taxCtrl.text) : 0,
       vendorOrCustomerName: _vendorCtrl.text.trim(),
       categoryId: _category?.id,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-      businessUsePercent: isBusiness ? _businessUsePercent : null,
+      businessUsePercent: null,
       receiptImages: images,
-      noReceiptAvailable: isBusiness ? _noReceipt : false,
-      noReceiptReason: (isBusiness && _noReceipt) ? _noReceiptReasonCtrl.text.trim() : null,
     );
 
     if (mounted) {
@@ -210,104 +273,68 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
     }
   }
 
-  Widget _buildPickedFilePreview() {
-    final path = _pickedReceiptFile!.path;
-    final name = p.basename(path);
-    final isImage = ReceiptImage(imageUrl: '', uploadedAt: DateTime.now(), fileName: name)
-        .isImageFile;
-
-    if (isImage) {
-      return Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.file(_pickedReceiptFile!, height: 160, fit: BoxFit.cover, width: double.infinity),
-          ),
-          Positioned(
-            top: 4,
-            right: 4,
-            child: CircleAvatar(
-              radius: 14,
-              backgroundColor: Colors.black54,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                icon: const Icon(Icons.close, size: 16, color: Colors.white),
-                onPressed: () => setState(() => _pickedReceiptFile = null),
-              ),
-            ),
-          ),
-        ],
+  /// Wraps a not-yet-saved local [File] as a [ReceiptImage] so it can reuse
+  /// AttachmentFileService's View/Share logic before the transaction exists.
+  ReceiptImage _wrapFile(File file) => ReceiptImage(
+        imageUrl: '',
+        uploadedAt: DateTime.now(),
+        localPath: file.path,
+        fileName: p.basename(file.path),
       );
-    }
 
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.insert_drive_file, size: 32),
-        title: Text(name, overflow: TextOverflow.ellipsis),
-        trailing: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => setState(() => _pickedReceiptFile = null),
-        ),
-      ),
-    );
+  Future<void> _downloadAttachment(ReceiptImage img) async {
+    try {
+      final saved = await AttachmentFileService.download(img);
+      if (saved && mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Downloaded.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not download file: $e')));
+      }
+    }
   }
 
-  Widget _buildExistingReceiptPreview() {
-    final existing = _keptExistingReceiptImages.first;
-    final name = existing.fileName ?? 'Receipt file';
-
-    if (existing.isImageFile) {
-      return Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: existing.localPath != null
-                ? Image.file(File(existing.localPath!),
-                    height: 160, fit: BoxFit.cover, width: double.infinity)
-                : Image.network(existing.imageUrl,
-                    height: 160, fit: BoxFit.cover, width: double.infinity),
-          ),
-          Positioned(
-            top: 4,
-            right: 4,
-            child: CircleAvatar(
-              radius: 14,
-              backgroundColor: Colors.black54,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                icon: const Icon(Icons.close, size: 16, color: Colors.white),
-                onPressed: () => setState(() => _keptExistingReceiptImages = []),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.insert_drive_file, size: 32),
-        title: Text(name, overflow: TextOverflow.ellipsis),
-        trailing: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => setState(() => _keptExistingReceiptImages = []),
-        ),
-      ),
-    );
-  }
-
-  /// The receipt attachment widget itself (image preview / picked file tile
-  /// / choose-file button) - shared by both Individual and Business layouts,
-  /// just placed in a different position in the field order.
+  /// The receipt attachment widget itself (compact card / choose-file
+  /// button) - shared by both Individual and Business layouts, just placed
+  /// in a different position in the field order. Deliberately never shows
+  /// a full inline preview - "View" opens one on demand instead.
   Widget _buildReceiptField() {
-    if (widget.imageFile != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.file(widget.imageFile!, height: 160, fit: BoxFit.cover),
+    if (widget.imageFile != null && !_ocrImageRemoved) {
+      final img = _wrapFile(widget.imageFile!);
+      return AttachmentCard(
+        fileName: AttachmentFileService.fileNameFor(img),
+        isImage: img.isImageFile,
+        onView: () => AttachmentFileService.view(context, img),
+        onShare: () => AttachmentFileService.share(img),
+        onDelete: () => setState(() => _ocrImageRemoved = true),
+        onDownload: () => _downloadAttachment(img),
       );
     }
-    if (_pickedReceiptFile != null) return _buildPickedFilePreview();
-    if (_keptExistingReceiptImages.isNotEmpty) return _buildExistingReceiptPreview();
+    if (_pickedReceiptFile != null) {
+      final img = _wrapFile(_pickedReceiptFile!);
+      return AttachmentCard(
+        fileName: AttachmentFileService.fileNameFor(img),
+        isImage: img.isImageFile,
+        onView: () => AttachmentFileService.view(context, img),
+        onShare: () => AttachmentFileService.share(img),
+        onDelete: () => setState(() => _pickedReceiptFile = null),
+        onDownload: () => _downloadAttachment(img),
+      );
+    }
+    if (_keptExistingReceiptImages.isNotEmpty) {
+      final existing = _keptExistingReceiptImages.first;
+      return AttachmentCard(
+        fileName: AttachmentFileService.fileNameFor(existing),
+        isImage: existing.isImageFile,
+        onView: () => AttachmentFileService.view(context, existing),
+        onShare: () => AttachmentFileService.share(existing),
+        onDelete: () => setState(() => _keptExistingReceiptImages = []),
+        onDownload: () => _downloadAttachment(existing),
+      );
+    }
     return OutlinedButton.icon(
       icon: const Icon(Icons.attach_file),
       label: const Text('Choose Receipt File (any format)'),
@@ -366,22 +393,26 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
             decoration: InputDecoration(labelText: isBusiness ? 'Amount (₹)' : 'Amount (₹) *'),
             onChanged: (_) => setState(() {}),
           ),
-          if (isBusiness) ...[
-            const SizedBox(height: 12),
-            TextField(
-              controller: _taxCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Tax amount (₹, if visible)'),
-            ),
-          ],
           const SizedBox(height: 12),
           DropdownButtonFormField<Category>(
             initialValue: _category,
             decoration: const InputDecoration(labelText: 'Category'),
-            items: _categoryOptions(isBusiness)
-                .map((c) => DropdownMenuItem(value: c, child: Text(c.name)))
-                .toList(),
-            onChanged: (v) => setState(() => _category = v),
+            items: [
+              ..._categoryOptions(isBusiness)
+                  .map((c) => DropdownMenuItem(value: c, child: Text(c.name))),
+              if (isBusiness)
+                DropdownMenuItem(
+                  value: _createCategorySentinel,
+                  child: Text(_createCategorySentinel.name),
+                ),
+            ],
+            onChanged: (v) {
+              if (v == _createCategorySentinel) {
+                _promptCreateCategory();
+                return;
+              }
+              setState(() => _category = v);
+            },
           ),
           const SizedBox(height: 12),
           TextField(
@@ -389,35 +420,7 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
             decoration: InputDecoration(labelText: isBusiness ? 'Notes (optional)' : 'Notes'),
             maxLines: 2,
           ),
-          if (isBusiness && widget.type == TxType.expense) ...[
-            const SizedBox(height: 12),
-            Text('Business use: $_businessUsePercent%'),
-            Slider(
-              value: _businessUsePercent.toDouble(),
-              min: 0,
-              max: 100,
-              divisions: 20,
-              label: '$_businessUsePercent%',
-              onChanged: (v) => setState(() => _businessUsePercent = v.round()),
-            ),
-          ],
-          if (isBusiness) ...[
-            const Divider(height: 32),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              value: _noReceipt,
-              title: const Text('No receipt available'),
-              onChanged: (v) => setState(() {
-                _noReceipt = v ?? false;
-                if (_noReceipt) _pickedReceiptFile = null;
-              }),
-            ),
-            if (_noReceipt)
-              TextField(
-                controller: _noReceiptReasonCtrl,
-                decoration: const InputDecoration(labelText: 'Reason (required)'),
-              ),
-          ] else ...[
+          if (!isBusiness) ...[
             // Individual Book: receipt is just another optional field,
             // placed here in the normal flow instead of at the top.
             const SizedBox(height: 12),
@@ -433,7 +436,7 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
           ],
           const SizedBox(height: 24),
           FilledButton(
-            onPressed: (_canSave(isBusiness) && !_saving) ? () => _save(isBusiness) : null,
+            onPressed: (_canSave(isBusiness) && !_saving) ? _save : null,
             child: _saving
                 ? const SizedBox(
                     height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))

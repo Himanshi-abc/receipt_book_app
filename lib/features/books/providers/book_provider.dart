@@ -1,8 +1,12 @@
 import 'package:flutter/foundation.dart';
 import '../../../core/models/book_model.dart';
+import '../../../core/models/contact_model.dart';
 import '../../../core/models/subscription_model.dart';
+import '../../../core/models/transaction_model.dart';
 import '../../../core/services/book_access_service.dart';
 import '../../../core/services/book_repository.dart';
+import '../../../core/services/category_repository.dart';
+import '../../../core/services/contact_repository.dart';
 
 class BookProvider extends ChangeNotifier {
   final BookRepository _repo = BookRepository();
@@ -53,12 +57,38 @@ class BookProvider extends ChangeNotifier {
     String? gstin,
     required String state,
     String? address,
-  }) =>
-      _repo.createBusinessBook(
-          userId: userId, name: name, gstin: gstin, state: state, address: address);
+  }) async {
+    final book = await _repo.createBusinessBook(
+        userId: userId, name: name, gstin: gstin, state: state, address: address);
+    await _seedBusinessBookDefaults(book);
+    return book;
+  }
+
+  /// Product decision: every new Business Book starts with one default
+  /// customer contact named after the business itself, and one default
+  /// Income category ("Daily Counter") for quick day-to-day sales entry -
+  /// Business Book Income otherwise has no built-in categories at all.
+  Future<void> _seedBusinessBookDefaults(Book book) async {
+    await ContactRepository().saveContact(
+      bookId: book.id,
+      name: book.name,
+      type: ContactType.customer,
+    );
+    await CategoryRepository().createCategory(
+      bookId: book.id,
+      name: 'Daily Counter',
+      type: TxType.income,
+    );
+  }
 
   Future<void> setActiveBusinessBook(String userId, String bookId) =>
       _repo.setActiveBusinessBook(userId, bookId);
+
+  /// Business Profile edits - see BookRepository.updateBook. `currentBook`
+  /// refreshes on its own once the write flows back through the
+  /// watchBooks() stream in listenToUser, no manual patch needed here.
+  Future<void> updateBook(String bookId, Map<String, dynamic> patch) =>
+      _repo.updateBook(bookId, patch);
 
   Future<void> choosePlan({
     required String userId,
