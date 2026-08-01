@@ -73,6 +73,11 @@ class Invoice {
   final String invoiceNumber; // e.g. "INV-2026-0001"
   final DateTime invoiceDate;
 
+  /// Payment due date. Null on bills created before this field existed (and
+  /// only then) - read it through [effectiveDueDate], never directly, so
+  /// those legacy bills still get the same default the form applies.
+  final DateTime? dueDate;
+
   /// Holds the Supplier's info on Purchase bills too - kept as one field
   /// set rather than duplicating customer/supplier variants throughout the
   /// PDF service and dashboard reads.
@@ -104,6 +109,7 @@ class Invoice {
     this.billDirection = BillDirection.sales,
     required this.invoiceNumber,
     required this.invoiceDate,
+    this.dueDate,
     required this.customerContactId,
     required this.customerName,
     required this.customerState,
@@ -128,6 +134,40 @@ class Invoice {
       taxableTotalPaise + taxTotalPaise - discountPaise + additionalChargePaise;
   int get balanceDuePaise => grandTotalPaise - amountReceivedPaise;
 
+  /// Default credit period applied when the user doesn't pick a due date.
+  static const int defaultCreditDays = 7;
+
+  /// The due date to reason with everywhere - falls back to the same
+  /// invoice date + [defaultCreditDays] the form pre-fills, so bills saved
+  /// before due dates existed still land in the dashboard's upcoming-due
+  /// buckets instead of being silently skipped.
+  DateTime get effectiveDueDate =>
+      dueDate ?? invoiceDate.add(const Duration(days: defaultCreditDays));
+
+  /// Whole days from [from] (date-only) until this bill is due. Negative
+  /// once it's overdue, 0 on the due date itself.
+  int daysUntilDue(DateTime from) {
+    final due = effectiveDueDate;
+    return DateTime(due.year, due.month, due.day)
+        .difference(DateTime(from.year, from.month, from.day))
+        .inDays;
+  }
+
+  /// Still owes money - the precondition for both due buckets below. A
+  /// fully settled bill's due date is history.
+  bool get isUnsettled => status != InvoiceStatus.paid;
+
+  /// Due within the next [days] days and not yet late. Due *today* counts
+  /// as upcoming, not overdue.
+  bool isDueWithin(int days, DateTime from) {
+    final left = daysUntilDue(from);
+    return isUnsettled && left >= 0 && left <= days;
+  }
+
+  /// Past its due date with money still owed. Disjoint from
+  /// [isDueWithin] by construction.
+  bool isOverdue(DateTime from) => isUnsettled && daysUntilDue(from) < 0;
+
   factory Invoice.fromMap(String id, Map<String, dynamic> map) => Invoice(
         id: id,
         bookId: map['bookId'] as String,
@@ -142,6 +182,7 @@ class Invoice {
         invoiceNumber: map['invoiceNumber'] as String? ?? '',
         invoiceDate:
             DateTime.tryParse(map['invoiceDate']?.toString() ?? '') ?? DateTime.now(),
+        dueDate: DateTime.tryParse(map['dueDate']?.toString() ?? ''),
         customerContactId: map['customerContactId'] as String? ?? '',
         customerName: map['customerName'] as String? ?? '',
         customerState: map['customerState'] as String? ?? '',
@@ -171,6 +212,7 @@ class Invoice {
         'billDirection': billDirection.name,
         'invoiceNumber': invoiceNumber,
         'invoiceDate': invoiceDate.toIso8601String(),
+        'dueDate': dueDate?.toIso8601String(),
         'customerContactId': customerContactId,
         'customerName': customerName,
         'customerState': customerState,
@@ -190,6 +232,7 @@ class Invoice {
 
   Invoice copyWith({
     DateTime? invoiceDate,
+    DateTime? dueDate,
     String? customerContactId,
     String? customerName,
     String? customerState,
@@ -211,6 +254,7 @@ class Invoice {
       billDirection: billDirection,
       invoiceNumber: invoiceNumber,
       invoiceDate: invoiceDate ?? this.invoiceDate,
+      dueDate: dueDate ?? this.dueDate,
       customerContactId: customerContactId ?? this.customerContactId,
       customerName: customerName ?? this.customerName,
       customerState: customerState ?? this.customerState,

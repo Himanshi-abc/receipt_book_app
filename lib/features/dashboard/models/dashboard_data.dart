@@ -68,6 +68,28 @@ class DashboardData {
   /// means more cash came in from customers than went out to suppliers.
   int get businessCashflowPaise => totalReceivedFromCustomersPaise - totalPaidToSuppliersPaise;
 
+  /// Bills falling due within the next [upcomingDueWindowDays] days - i.e.
+  /// the 3-day heads-up before a payment is owed. Like the outstanding
+  /// pair above these are "till date", not scoped to the dashboard's
+  /// selected range: what's about to come due doesn't depend on which
+  /// reporting period you happen to be looking at. Amounts are the
+  /// remaining balance due, and already-paid bills never appear.
+  final int upcomingPurchaseDuePaise; // owed BY the business, due soon
+  final int upcomingPurchaseDueCount;
+  final int upcomingSalesDuePaise; // owed TO the business, due soon
+  final int upcomingSalesDueCount;
+
+  /// How far ahead "upcoming" looks, in days.
+  static const int upcomingDueWindowDays = 3;
+
+  /// Bills whose due date has already passed and that still owe money -
+  /// the counterpart to the upcoming pair, with no window on how far back
+  /// they go. A bill is in exactly one of the two buckets, never both.
+  final int overduePurchasePaise; // owed BY the business, already late
+  final int overduePurchaseCount;
+  final int overdueSalesPaise; // owed TO the business, already late
+  final int overdueSalesCount;
+
   DashboardData({
     required this.totalIncomePaise,
     required this.totalExpensePaise,
@@ -83,6 +105,14 @@ class DashboardData {
     this.pendingSupplierBillsCount = 0,
     this.totalReceivedFromCustomersPaise = 0,
     this.totalPaidToSuppliersPaise = 0,
+    this.upcomingPurchaseDuePaise = 0,
+    this.upcomingPurchaseDueCount = 0,
+    this.upcomingSalesDuePaise = 0,
+    this.upcomingSalesDueCount = 0,
+    this.overduePurchasePaise = 0,
+    this.overduePurchaseCount = 0,
+    this.overdueSalesPaise = 0,
+    this.overdueSalesCount = 0,
   });
 
   static DashboardData empty() => DashboardData(

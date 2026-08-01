@@ -1,10 +1,14 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../core/design/app_colors.dart';
+import '../../../core/design/app_spacing.dart';
 import '../../../core/models/transaction_model.dart';
 import '../../../core/models/category_model.dart';
 import '../../../core/services/transaction_repository.dart';
 import '../../../core/services/book_access_service.dart';
+import '../../../core/widgets/app_empty_state.dart';
+import '../../../core/widgets/app_search_field.dart';
 import '../../books/providers/book_provider.dart';
 import '../services/register_excel_service.dart';
 import '../widgets/transaction_tile.dart';
@@ -239,14 +243,11 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
               children: [
                 if (!writable) _buildLockBanner(context, bookProvider),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: TextField(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.pageGutter, vertical: AppSpacing.md),
+                  child: AppSearchField(
                     controller: _searchCtrl,
-                    decoration: InputDecoration(
-                      hintText: 'Search vendor, notes, category...',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
+                    hintText: 'Search vendor, notes, category...',
                     onChanged: (_) => setState(_applyFilters),
                   ),
                 ),
@@ -328,11 +329,46 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
                       : _filtered.isEmpty
-                          ? const Center(child: Text('No transactions yet.'))
+                          ? (_all.isEmpty
+                              ? AppEmptyState(
+                                  icon: Icons.receipt_long_outlined,
+                                  title: 'No transactions yet',
+                                  message: writable
+                                      ? 'Scan a receipt or add an entry manually to start '
+                                          'building your books.'
+                                      : 'This book has no entries yet.',
+                                  actionLabel: writable ? 'Add first entry' : null,
+                                  onAction: writable
+                                      ? () async {
+                                          await Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                                builder: (_) => const ScanChoiceScreen()),
+                                          );
+                                          _load();
+                                        }
+                                      : null,
+                                )
+                              : const AppEmptyState(
+                                  icon: Icons.search_off,
+                                  title: 'No matching entries',
+                                  message:
+                                      'Nothing matches the current search and filters. '
+                                      'Try clearing one of them.',
+                                ))
                           : RefreshIndicator(
                               onRefresh: _load,
-                              child: ListView.builder(
+                              child: ListView.separated(
+                                padding: const EdgeInsets.fromLTRB(
+                                  AppSpacing.pageGutter,
+                                  AppSpacing.xs,
+                                  AppSpacing.pageGutter,
+                                  // Clears the FAB.
+                                  AppSpacing.giant + AppSpacing.xxl,
+                                ),
                                 itemCount: _filtered.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: AppSpacing.sm),
                                 itemBuilder: (ctx, i) {
                                   final tx = _filtered[i];
                                   return TransactionTile(
@@ -399,29 +435,58 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
     }
   }
 
+  /// Inline banner rather than a blocking dialog: the user can still read
+  /// their existing data while locked, they just can't write. The icon +
+  /// text pairing means the warning survives greyscale and screen readers.
   Widget _buildLockBanner(BuildContext context, BookProvider bookProvider) {
     final access = bookProvider.accessFor(bookProvider.currentBook!);
+    final theme = Theme.of(context);
+    final warning = context.tones.warning;
+
     return Container(
       width: double.infinity,
-      color: Colors.orange.shade100,
-      padding: const EdgeInsets.all(12),
-      child: Column(
+      decoration: BoxDecoration(
+        color: warning.bg,
+        border: Border(bottom: BorderSide(color: warning.border)),
+      ),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.pageGutter,
+        AppSpacing.md,
+        AppSpacing.pageGutter,
+        AppSpacing.sm,
+      ),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'This book is locked',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade900),
-          ),
-          const SizedBox(height: 4),
-          Text(BookAccessService.messageFor(access.reason)),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              TextButton(
-                onPressed: () => Navigator.pushNamed(context, '/settings/manage-books'),
-                child: const Text('Switch active book / Upgrade'),
-              ),
-            ],
+          Icon(Icons.lock_outline, size: 18, color: warning.fg),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This book is locked',
+                  style: theme.textTheme.titleSmall?.copyWith(color: warning.fg),
+                ),
+                const SizedBox(height: AppSpacing.xxs),
+                Text(
+                  BookAccessService.messageFor(access.reason),
+                  style: theme.textTheme.bodySmall?.copyWith(color: warning.fg),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: warning.fg,
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                    ),
+                    onPressed: () =>
+                        Navigator.pushNamed(context, '/settings/manage-books'),
+                    child: const Text('Switch active book / Upgrade'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

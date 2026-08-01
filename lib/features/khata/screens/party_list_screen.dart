@@ -1,10 +1,16 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../core/design/app_colors.dart';
+import '../../../core/design/app_spacing.dart';
+import '../../../core/design/app_typography.dart';
 import '../../../core/models/contact_model.dart';
 import '../../../core/services/book_access_service.dart';
 import '../../../core/services/contact_repository.dart';
-import '../../../core/utils/money.dart';
+import '../../../core/widgets/app_empty_state.dart';
+import '../../../core/widgets/app_search_field.dart';
+import '../../../core/widgets/app_stat_card.dart';
+import '../../../core/widgets/money_text.dart';
 import '../../books/providers/book_provider.dart';
 import '../services/customer_excel_service.dart';
 import '../services/khata_balance.dart';
@@ -20,13 +26,19 @@ enum _SortOption { recentlyUpdated, outstandingHighToLow, nameAZ }
 /// screen behind `currentBook?.isBusiness == true` (see HomeLedgerScreen).
 class PartyListScreen extends StatefulWidget {
   final ContactType type;
-  const PartyListScreen({required this.type, super.key});
+
+  /// When true this renders without its own AppBar, because HomeLedgerScreen's
+  /// shell already provides one. The Excel action moves up there too, driven
+  /// through [PartyListScreenState.downloadCustomersExcel].
+  final bool embedded;
+
+  const PartyListScreen({required this.type, this.embedded = false, super.key});
 
   @override
-  State<PartyListScreen> createState() => _PartyListScreenState();
+  State<PartyListScreen> createState() => PartyListScreenState();
 }
 
-class _PartyListScreenState extends State<PartyListScreen> {
+class PartyListScreenState extends State<PartyListScreen> {
   final _contactRepo = ContactRepository();
   final _entryRepo = KhataEntryRepository();
   final _searchCtrl = TextEditingController();
@@ -132,7 +144,7 @@ class _PartyListScreenState extends State<PartyListScreen> {
   /// to device storage via file_picker's Save As dialog (same pattern as
   /// the Individual Book Excel export - lets the user see/pick exactly
   /// where it lands, e.g. Downloads).
-  Future<void> _downloadCustomersExcel() async {
+  Future<void> downloadCustomersExcel() async {
     final withDue = _all.where((c) => (_balanceByContactId[c.id] ?? 0) > 0).toList();
     if (withDue.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -180,51 +192,68 @@ class _PartyListScreenState extends State<PartyListScreen> {
     final access = bookProvider.accessFor(book);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_sectionTitle),
-        actions: [
-          if (_isCustomer)
-            IconButton(
-              icon: const Icon(Icons.file_download_outlined),
-              tooltip: 'Download customers with outstanding amount (Excel)',
-              onPressed: _downloadCustomersExcel,
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: Text(_sectionTitle),
+              actions: [
+                if (_isCustomer)
+                  IconButton(
+                    icon: const Icon(Icons.file_download_outlined),
+                    tooltip: 'Download customers with outstanding amount (Excel)',
+                    onPressed: downloadCustomersExcel,
+                  ),
+              ],
             ),
-        ],
-      ),
       body: !access.writable
           ? _buildLockedState(access)
           : Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _buildSummaryCard(
-                            'You Collect', _youCollectPaise, Colors.green.shade700),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildSummaryCard('You Pay', _youPayPaise, Colors.red.shade700),
-                      ),
-                    ],
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.pageGutter, AppSpacing.lg, AppSpacing.pageGutter, 0),
+                  // IntrinsicHeight, not bare `stretch`: this Row's parent
+                  // is a Column, so incoming maxHeight is unbounded and
+                  // `stretch` would force a tight infinite height on the
+                  // cards, blanking the screen.
+                  child: IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: AppStatCard(
+                            label: 'You Collect',
+                            amountPaise: _youCollectPaise,
+                            tone: AppTone.positive,
+                            icon: Icons.call_received,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: AppStatCard(
+                            label: 'You Pay',
+                            amountPaise: _youPayPaise,
+                            tone: AppTone.negative,
+                            icon: Icons.call_made,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.pageGutter, vertical: AppSpacing.md),
                   child: Row(
                     children: [
                       Expanded(
-                        child: TextField(
+                        child: AppSearchField(
                           controller: _searchCtrl,
-                          decoration: InputDecoration(
-                            hintText: 'Search ${_sectionTitle.toLowerCase()} by name',
-                            prefixIcon: const Icon(Icons.search),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
+                          hintText: 'Search ${_sectionTitle.toLowerCase()} by name',
                           onChanged: (_) => setState(_applyFilters),
                         ),
                       ),
+                      const SizedBox(width: AppSpacing.xs),
                       PopupMenuButton<_SortOption>(
                         icon: const Icon(Icons.sort),
                         tooltip: 'Sort by',
@@ -255,34 +284,55 @@ class _PartyListScreenState extends State<PartyListScreen> {
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
                       : _filtered.isEmpty
-                          ? Center(
-                              child: Text(
-                                _all.isEmpty
-                                    ? 'No ${_sectionTitle.toLowerCase()} yet. Tap + to add one.'
-                                    : 'No matches found.',
-                              ),
-                            )
+                          ? (_all.isEmpty
+                              ? AppEmptyState(
+                                  icon: _isCustomer
+                                      ? Icons.people_outline
+                                      : Icons.local_shipping_outlined,
+                                  title: 'No ${_sectionTitle.toLowerCase()} yet',
+                                  message:
+                                      'Add a ${_isCustomer ? 'customer' : 'supplier'} to start '
+                                      'tracking what they owe you and what you owe them.',
+                                  actionLabel:
+                                      _isCustomer ? 'Add Customer' : 'Add Supplier',
+                                  onAction: () async {
+                                    await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            AddPartyScreen(defaultType: widget.type),
+                                      ),
+                                    );
+                                    _load();
+                                  },
+                                )
+                              : const AppEmptyState(
+                                  icon: Icons.search_off,
+                                  title: 'No matches',
+                                  message:
+                                      'No one here matches that search. Try a different name.',
+                                ))
                           : RefreshIndicator(
                               onRefresh: _load,
-                              child: ListView.builder(
+                              child: ListView.separated(
+                                padding: const EdgeInsets.fromLTRB(
+                                  AppSpacing.pageGutter,
+                                  AppSpacing.xs,
+                                  AppSpacing.pageGutter,
+                                  // Clears the extended FAB so the last row
+                                  // is never trapped underneath it.
+                                  AppSpacing.giant + AppSpacing.xxl,
+                                ),
                                 itemCount: _filtered.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: AppSpacing.sm),
                                 itemBuilder: (ctx, i) {
                                   final contact = _filtered[i];
                                   final balance = _balanceByContactId[contact.id] ?? 0;
-                                  return ListTile(
-                                    title: Text(contact.name),
-                                    subtitle: Text(contact.phone ?? ''),
-                                    trailing: balance == 0
-                                        ? const Text('₹0.00', style: TextStyle(color: Colors.grey))
-                                        : Text(
-                                            Money.format(balance.abs()),
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: balance > 0
-                                                  ? Colors.green.shade700
-                                                  : Colors.red.shade700,
-                                            ),
-                                          ),
+                                  return _PartyRow(
+                                    contact: contact,
+                                    balancePaise: balance,
+                                    isCustomer: _isCustomer,
                                     onTap: () async {
                                       await Navigator.push(
                                         context,
@@ -317,46 +367,152 @@ class _PartyListScreenState extends State<PartyListScreen> {
     );
   }
 
-  Widget _buildSummaryCard(String label, int paise, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          Text(
-            Money.format(paise),
-            style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold),
-            overflow: TextOverflow.ellipsis,
+  Widget _buildLockedState(BookAccessResult access) {
+    return AppEmptyState(
+      icon: Icons.lock_outline,
+      title: 'This book is locked',
+      message: BookAccessService.messageFor(access.reason),
+      tone: AppTone.warning,
+      actionLabel: 'Switch Active Book / Upgrade',
+      onAction: () => Navigator.pushNamed(context, '/settings/manage-books'),
+    );
+  }
+}
+
+/// One customer/supplier row.
+///
+/// Promoted from an inline `ListTile` to a real card row for two reasons:
+/// the balance now carries an explicit "You'll get"/"You'll pay" caption
+/// (a bare coloured number required the user to remember what green meant),
+/// and a settled party renders in neutral rather than as a colourless
+/// "₹0.00" that looked like missing data.
+class _PartyRow extends StatelessWidget {
+  final Contact contact;
+  final int balancePaise;
+  final bool isCustomer;
+  final VoidCallback onTap;
+
+  const _PartyRow({
+    required this.contact,
+    required this.balancePaise,
+    required this.isCustomer,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tones = context.tones;
+    final settled = balancePaise == 0;
+
+    // A positive balance means the party owes the business. For a customer
+    // that's money to collect; for a supplier the same sign means the
+    // reverse - hence the flip. (See khata_balance.dart.)
+    final owedToBusiness = isCustomer ? balancePaise > 0 : balancePaise < 0;
+    final tone = settled
+        ? AppTone.neutral
+        : (owedToBusiness ? AppTone.positive : AppTone.negative);
+    final caption = settled
+        ? 'Settled'
+        : (owedToBusiness ? "You'll get" : "You'll pay");
+
+    return Material(
+      color: tones.surface,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: tones.border),
           ),
-        ],
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              _Avatar(name: contact.name),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      contact.name,
+                      style: theme.textTheme.titleSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (contact.phone?.trim().isNotEmpty == true) ...[
+                      const SizedBox(height: AppSpacing.xxs),
+                      Text(
+                        contact.phone!,
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: tones.textTertiary)
+                            .tabular,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  MoneyText(
+                    balancePaise,
+                    tone: tone,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: AppSpacing.xxs),
+                  Text(
+                    caption,
+                    style: theme.textTheme.labelSmall
+                        ?.copyWith(color: tones.textTertiary),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+}
 
-  Widget _buildLockedState(BookAccessResult access) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.lock_outline, size: 48, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(BookAccessService.messageFor(access.reason), textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => Navigator.pushNamed(context, '/settings/manage-books'),
-              child: const Text('Switch Active Book / Upgrade'),
-            ),
-          ],
-        ),
+/// Monogram avatar. Gives each row a stable visual anchor so a long list
+/// is scannable by shape, not just by reading every name.
+class _Avatar extends StatelessWidget {
+  final String name;
+  const _Avatar({required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    final tones = context.tones;
+    final trimmed = name.trim();
+    final initial = trimmed.isEmpty ? '?' : trimmed.characters.first.toUpperCase();
+
+    return Container(
+      width: 40,
+      height: 40,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: tones.brand.bg,
+        shape: BoxShape.circle,
+        border: Border.all(color: tones.brand.border),
+      ),
+      child: Text(
+        initial,
+        style: Theme.of(context)
+            .textTheme
+            .titleSmall
+            ?.copyWith(color: tones.brand.fg),
       ),
     );
   }

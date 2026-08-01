@@ -71,6 +71,7 @@ class InvoiceRepository {
   Future<Invoice> createInvoice({
     required Book book,
     required DateTime invoiceDate,
+    DateTime? dueDate,
     required String customerContactId,
     required String customerName,
     required String customerState,
@@ -94,6 +95,7 @@ class InvoiceRepository {
       billDirection: billDirection,
       invoiceNumber: invoiceNumber,
       invoiceDate: invoiceDate,
+      dueDate: dueDate,
       customerContactId: customerContactId,
       customerName: customerName,
       customerState: customerState,
@@ -142,6 +144,7 @@ class InvoiceRepository {
   Future<Invoice> updateInvoice({
     required Invoice existing,
     required DateTime invoiceDate,
+    DateTime? dueDate,
     required String customerContactId,
     required String customerName,
     required String customerState,
@@ -163,6 +166,7 @@ class InvoiceRepository {
       billDirection: existing.billDirection,
       invoiceNumber: existing.invoiceNumber,
       invoiceDate: invoiceDate,
+      dueDate: dueDate,
       customerContactId: customerContactId,
       customerName: customerName,
       customerState: customerState,

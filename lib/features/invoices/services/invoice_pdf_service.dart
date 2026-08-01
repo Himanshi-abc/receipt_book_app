@@ -149,6 +149,10 @@ class InvoicePdfService {
               'Date: ${invoice.invoiceDate.day}/${invoice.invoiceDate.month}/${invoice.invoiceDate.year}',
               style: pw.TextStyle(fontSize: 10, color: bodyColor),
             ),
+            pw.Text(
+              'Due Date: ${invoice.effectiveDueDate.day}/${invoice.effectiveDueDate.month}/${invoice.effectiveDueDate.year}',
+              style: pw.TextStyle(fontSize: 10, color: bodyColor),
+            ),
           ],
         ),
       ],

@@ -17,7 +17,11 @@ class DashboardService {
     required DashboardDateRange range,
     List<Category> categories = const [],
     List<Invoice> invoices = const [],
+    /// "Today" for the upcoming-due window. Injectable so the computation
+    /// stays a pure function of its inputs (and testable without clocks).
+    DateTime? now,
   }) {
+    final today = now ?? DateTime.now();
     final txs = allTransactions.where((t) => range.contains(t.date)).toList();
 
     int totalIncome = 0;
@@ -83,6 +87,17 @@ class DashboardService {
         allSales.fold<int>(0, (a, i) => a + i.amountReceivedPaise);
     final totalPaidToSuppliers = allPurchase.fold<int>(0, (a, i) => a + i.amountReceivedPaise);
 
+    // Upcoming vs overdue. The predicates live on Invoice so the drill-down
+    // list these cards open (DueBillsScreen) selects exactly the same bills
+    // these totals were computed from - two copies of the rule would
+    // eventually disagree, and a card whose total doesn't match its own
+    // list is worse than no card.
+    const window = DashboardData.upcomingDueWindowDays;
+    final upcomingSales = unpaidSales.where((i) => i.isDueWithin(window, today)).toList();
+    final upcomingPurchase = unpaidPurchase.where((i) => i.isDueWithin(window, today)).toList();
+    final overdueSales = unpaidSales.where((i) => i.isOverdue(today)).toList();
+    final overduePurchase = unpaidPurchase.where((i) => i.isOverdue(today)).toList();
+
     // Fast/Slow Moving Products - quantity sold on Sales invoices within
     // the selected date range, grouped by line-item description (already
     // denormalized onto the line item, so no Product join is needed).
@@ -117,6 +132,15 @@ class DashboardService {
       pendingSupplierBillsCount: unpaidPurchase.length,
       totalReceivedFromCustomersPaise: totalReceivedFromCustomers,
       totalPaidToSuppliersPaise: totalPaidToSuppliers,
+      upcomingPurchaseDuePaise:
+          upcomingPurchase.fold<int>(0, (a, i) => a + i.balanceDuePaise),
+      upcomingPurchaseDueCount: upcomingPurchase.length,
+      upcomingSalesDuePaise: upcomingSales.fold<int>(0, (a, i) => a + i.balanceDuePaise),
+      upcomingSalesDueCount: upcomingSales.length,
+      overduePurchasePaise: overduePurchase.fold<int>(0, (a, i) => a + i.balanceDuePaise),
+      overduePurchaseCount: overduePurchase.length,
+      overdueSalesPaise: overdueSales.fold<int>(0, (a, i) => a + i.balanceDuePaise),
+      overdueSalesCount: overdueSales.length,
     );
   }
 

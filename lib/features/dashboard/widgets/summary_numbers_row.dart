@@ -1,6 +1,14 @@
 import 'package:flutter/material.dart';
-import '../../../core/utils/money.dart';
 
+import '../../../core/design/app_colors.dart';
+import '../../../core/design/app_spacing.dart';
+import '../../../core/widgets/app_stat_card.dart';
+import '../../../core/widgets/money_text.dart';
+
+/// Income / Expense / Net for the selected date range.
+///
+/// Now three [AppStatCard]s rather than a bespoke `_NumberCard`, so this
+/// row is pixel-identical to the outstanding, bills and khata summaries.
 class SummaryNumbersRow extends StatelessWidget {
   final int incomePaise;
   final int expensePaise;
@@ -16,78 +24,46 @@ class SummaryNumbersRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isProfit = netPaise >= 0;
-    return Row(
-      children: [
-        Expanded(
-          child: _NumberCard(
-            label: 'Income',
-            value: Money.format(incomePaise),
-            color: Colors.green,
-            icon: Icons.arrow_downward,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _NumberCard(
-            label: 'Expense',
-            value: Money.format(expensePaise),
-            color: Colors.red,
-            icon: Icons.arrow_upward,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _NumberCard(
-            label: isProfit ? 'Net Profit' : 'Net Loss',
-            value: Money.format(netPaise.abs()),
-            color: isProfit ? Colors.teal : Colors.deepOrange,
-            icon: isProfit ? Icons.trending_up : Icons.trending_down,
-          ),
-        ),
-      ],
-    );
-  }
-}
 
-class _NumberCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  final IconData icon;
-
-  const _NumberCard(
-      {required this.label, required this.value, required this.color, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: color.withOpacity(0.08),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 16, color: color),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(label,
-                      style: TextStyle(fontSize: 12, color: color.withOpacity(0.9)),
-                      overflow: TextOverflow.ellipsis),
-                ),
-              ],
+    // IntrinsicHeight, not `CrossAxisAlignment.stretch`: this row sits in a
+    // ListView, so its incoming maxHeight is unbounded. `stretch` would
+    // hand children a tight *infinite* height and the subtree would fail to
+    // lay out. IntrinsicHeight resolves a finite height (the tallest card)
+    // first, which is what actually makes the three cards equal height.
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: AppStatCard(
+              label: 'Income',
+              amountPaise: incomePaise,
+              tone: AppTone.positive,
+              icon: Icons.arrow_downward,
             ),
-            const SizedBox(height: 6),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                value,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
-              ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: AppStatCard(
+              label: 'Expense',
+              amountPaise: expensePaise,
+              tone: AppTone.negative,
+              icon: Icons.arrow_upward,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: AppStatCard(
+              label: isProfit ? 'Net Profit' : 'Net Loss',
+              amountPaise: netPaise,
+              // The label already states profit vs loss, so showing a minus
+              // sign as well would read as a double negative.
+              sign: MoneySign.magnitude,
+              tone: isProfit ? AppTone.brand : AppTone.warning,
+              icon: isProfit ? Icons.trending_up : Icons.trending_down,
+            ),
+          ),
+        ],
       ),
     );
   }

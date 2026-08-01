@@ -2,9 +2,13 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import '../../../core/design/app_colors.dart';
+import '../../../core/design/app_spacing.dart';
+import '../../../core/design/app_typography.dart';
 import '../../../core/models/book_model.dart';
 import '../../../core/models/invoice_model.dart';
 import '../../../core/utils/money.dart';
+import '../../../core/widgets/money_text.dart';
 import '../services/invoice_pdf_service.dart';
 import '../services/invoice_repository.dart';
 
@@ -150,39 +154,61 @@ class _InvoicePreviewShareScreenState extends State<InvoicePreviewShareScreen> {
   }
 
   Widget _buildStatusBanner() {
-    final color = switch (_invoice.status) {
-      InvoiceStatus.paid => Colors.green,
-      InvoiceStatus.partial => Colors.orange,
-      InvoiceStatus.unpaid => Colors.red,
+    final theme = Theme.of(context);
+    final (tone, label, icon) = switch (_invoice.status) {
+      InvoiceStatus.paid => (AppTone.positive, 'Paid', Icons.check_circle_outline),
+      InvoiceStatus.partial =>
+        (AppTone.warning, 'Partially Paid', Icons.schedule),
+      InvoiceStatus.unpaid => (AppTone.negative, 'Unpaid', Icons.error_outline),
     };
-    final label = switch (_invoice.status) {
-      InvoiceStatus.paid => 'Paid',
-      InvoiceStatus.partial => 'Partially Paid',
-      InvoiceStatus.unpaid => 'Unpaid',
-    };
+    final toneColors = context.tones.byTone(tone);
+
     return Container(
       width: double.infinity,
-      color: color.withOpacity(0.1),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: toneColors.bg,
+        border: Border(bottom: BorderSide(color: toneColors.border)),
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.pageGutter,
+        vertical: AppSpacing.md,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-              Text(Money.format(_invoice.grandTotalPaise),
-                  style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+              // Icon + label, so status survives greyscale printing and
+              // colour-vision deficiency (WCAG 1.4.1).
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 16, color: toneColors.fg),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    label,
+                    style: theme.textTheme.titleSmall?.copyWith(color: toneColors.fg),
+                  ),
+                ],
+              ),
+              MoneyText(
+                _invoice.grandTotalPaise,
+                tone: tone,
+                style: theme.textTheme.titleSmall,
+              ),
             ],
           ),
           if (_invoice.amountReceivedPaise > 0)
             Padding(
-              padding: const EdgeInsets.only(top: 4),
+              padding: const EdgeInsets.only(top: AppSpacing.xs),
               child: Text(
                 'Received ${Money.format(_invoice.amountReceivedPaise)}'
                 '${_invoice.paymentMode != null ? ' via ${_invoice.paymentMode}' : ''}'
-                ' · Balance ${Money.format(_invoice.balanceDuePaise)}',
-                style: TextStyle(color: color.withOpacity(0.8), fontSize: 12),
+                '  ·  Balance ${Money.format(_invoice.balanceDuePaise)}',
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(color: toneColors.fg)
+                    .tabular,
               ),
             ),
         ],

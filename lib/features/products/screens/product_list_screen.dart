@@ -1,9 +1,14 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../core/design/app_colors.dart';
+import '../../../core/design/app_spacing.dart';
+import '../../../core/design/app_typography.dart';
 import '../../../core/models/product_model.dart';
 import '../../../core/services/book_access_service.dart';
-import '../../../core/utils/money.dart';
+import '../../../core/widgets/app_empty_state.dart';
+import '../../../core/widgets/app_search_field.dart';
+import '../../../core/widgets/money_text.dart';
 import '../../books/providers/book_provider.dart';
 import '../services/product_pdf_service.dart';
 import '../services/product_repository.dart';
@@ -12,13 +17,18 @@ import 'add_product_screen.dart';
 /// Business Book only; the caller is responsible for gating navigation to
 /// this screen behind `currentBook?.isBusiness == true` (see HomeLedgerScreen).
 class ProductListScreen extends StatefulWidget {
-  const ProductListScreen({super.key});
+  /// When true this renders without its own AppBar, because HomeLedgerScreen's
+  /// shell already provides one. The PDF action moves up there too, driven
+  /// through [ProductListScreenState.downloadProductsPdf].
+  final bool embedded;
+
+  const ProductListScreen({super.key, this.embedded = false});
 
   @override
-  State<ProductListScreen> createState() => _ProductListScreenState();
+  State<ProductListScreen> createState() => ProductListScreenState();
 }
 
-class _ProductListScreenState extends State<ProductListScreen> {
+class ProductListScreenState extends State<ProductListScreen> {
   final _repo = ProductRepository();
   final _searchCtrl = TextEditingController();
   bool _loading = true;
@@ -54,7 +64,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
             .toList();
   }
 
-  Future<void> _downloadProductsPdf() async {
+  Future<void> downloadProductsPdf() async {
     if (_all.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Add a product first.')),
@@ -92,29 +102,28 @@ class _ProductListScreenState extends State<ProductListScreen> {
     final access = bookProvider.accessFor(book);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Products'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            tooltip: 'Download product list (PDF)',
-            onPressed: _downloadProductsPdf,
-          ),
-        ],
-      ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: const Text('Products'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  tooltip: 'Download product list (PDF)',
+                  onPressed: downloadProductsPdf,
+                ),
+              ],
+            ),
       body: !access.writable
           ? _buildLockedState(access)
           : Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: TextField(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.pageGutter, vertical: AppSpacing.md),
+                  child: AppSearchField(
                     controller: _searchCtrl,
-                    decoration: InputDecoration(
-                      hintText: 'Search products by name or code',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
+                    hintText: 'Search products by name or code',
                     onChanged: (_) => setState(_applyFilter),
                   ),
                 ),
@@ -122,35 +131,45 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
                       : _filtered.isEmpty
-                          ? Center(
-                              child: Text(
-                                _all.isEmpty
-                                    ? 'No products yet. Tap + to add one.'
-                                    : 'No matches found.',
-                              ),
-                            )
+                          ? (_all.isEmpty
+                              ? AppEmptyState(
+                                  icon: Icons.inventory_2_outlined,
+                                  title: 'No products yet',
+                                  message:
+                                      'Add the products or services you sell so you can '
+                                      'drop them straight into a bill.',
+                                  actionLabel: 'Add product',
+                                  onAction: () async {
+                                    await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) => const AddProductScreen()),
+                                    );
+                                    _load();
+                                  },
+                                )
+                              : const AppEmptyState(
+                                  icon: Icons.search_off,
+                                  title: 'No matches',
+                                  message:
+                                      'No product matches that name or code.',
+                                ))
                           : RefreshIndicator(
                               onRefresh: _load,
-                              child: ListView.builder(
+                              child: ListView.separated(
+                                padding: const EdgeInsets.fromLTRB(
+                                  AppSpacing.pageGutter,
+                                  AppSpacing.xs,
+                                  AppSpacing.pageGutter,
+                                  AppSpacing.giant + AppSpacing.xxl,
+                                ),
                                 itemCount: _filtered.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: AppSpacing.sm),
                                 itemBuilder: (ctx, i) {
                                   final p = _filtered[i];
-                                  return ListTile(
-                                    leading: CircleAvatar(
-                                      radius: 16,
-                                      child: Text(
-                                        p.productCode?.toString() ?? '-',
-                                        style: const TextStyle(fontSize: 12),
-                                      ),
-                                    ),
-                                    title: Text(p.name),
-                                    subtitle: Text(
-                                      p.type == ProductItemType.product ? 'Product' : 'Service',
-                                    ),
-                                    trailing: Text(
-                                      Money.format(p.sellingPricePaise),
-                                      style: const TextStyle(fontWeight: FontWeight.bold),
-                                    ),
+                                  return _ProductRow(
+                                    product: p,
                                     onTap: () async {
                                       await Navigator.push(
                                         context,
@@ -183,21 +202,98 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 
   Widget _buildLockedState(BookAccessResult access) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.lock_outline, size: 48, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(BookAccessService.messageFor(access.reason), textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => Navigator.pushNamed(context, '/settings/manage-books'),
-              child: const Text('Switch Active Book / Upgrade'),
-            ),
-          ],
+    return AppEmptyState(
+      icon: Icons.lock_outline,
+      title: 'This book is locked',
+      message: BookAccessService.messageFor(access.reason),
+      tone: AppTone.warning,
+      actionLabel: 'Switch Active Book / Upgrade',
+      onAction: () => Navigator.pushNamed(context, '/settings/manage-books'),
+    );
+  }
+}
+
+/// One product/service row.
+///
+/// The product code moves into a monospaced-feel badge rather than a
+/// `CircleAvatar`: codes run to 2-3 digits and were being clipped inside a
+/// 32px circle, and a squircle badge reads as an identifier rather than as
+/// a person.
+class _ProductRow extends StatelessWidget {
+  final Product product;
+  final VoidCallback onTap;
+
+  const _ProductRow({required this.product, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tones = context.tones;
+    final isProduct = product.type == ProductItemType.product;
+
+    return Material(
+      color: tones.surface,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: tones.border),
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                constraints: const BoxConstraints(minWidth: 40),
+                height: 40,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: tones.neutral.bg,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: Border.all(color: tones.neutral.border),
+                ),
+                child: Text(
+                  product.productCode?.toString() ?? '—',
+                  style: theme.textTheme.labelMedium
+                      ?.copyWith(color: tones.textSecondary)
+                      .tabular,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      product.name,
+                      style: theme.textTheme.titleSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: AppSpacing.xxs),
+                    Text(
+                      isProduct ? 'Product' : 'Service',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: tones.textTertiary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              MoneyText(
+                product.sellingPricePaise,
+                muted: true,
+                style: theme.textTheme.titleSmall,
+              ),
+            ],
+          ),
         ),
       ),
     );

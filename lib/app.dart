@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'core/design/app_theme.dart';
+import 'core/navigation/business_section.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/books/providers/book_provider.dart';
@@ -10,11 +12,6 @@ import 'features/invoices/screens/invoice_template_screen.dart';
 import 'features/ledger/screens/home_ledger_screen.dart';
 import 'features/ledger/screens/register_screen.dart';
 import 'features/settings/screens/settings_screen.dart';
-import 'features/dashboard/screens/business_dashboard_screen.dart';
-import 'features/bills/screens/bill_list_screen.dart';
-import 'features/khata/screens/party_list_screen.dart';
-import 'core/models/contact_model.dart';
-import 'features/products/screens/product_list_screen.dart';
 
 class ReceiptBookApp extends StatelessWidget {
   const ReceiptBookApp({super.key});
@@ -29,24 +26,37 @@ class ReceiptBookApp extends StatelessWidget {
       child: MaterialApp(
         title: 'ReceiptBook',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorSchemeSeed: Colors.teal,
-          useMaterial3: true,
-        ),
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        // Pinned to light for now. The dark token set is complete and the
+        // migrated components render correctly in it, but screens that have
+        // not yet moved off hardcoded colors (Colors.white / grey.shade100)
+        // would render broken. Flip to ThemeMode.system once the remaining
+        // screens are migrated - see the handover note.
+        themeMode: ThemeMode.light,
         home: const _RootGate(),
         routes: {
+          // The Business Book sections all resolve to the shell with that
+          // section selected, so a deep link lands somewhere the section
+          // bar is present - arriving on a bare screen with only a back
+          // arrow is the exact dead end the shell exists to remove.
           '/home': (_) => const HomeLedgerScreen(),
+          '/dashboard': (_) =>
+              const HomeLedgerScreen(initialSection: BusinessSection.dashboard),
+          '/bills': (_) =>
+              const HomeLedgerScreen(initialSection: BusinessSection.bills),
+          '/customers': (_) =>
+              const HomeLedgerScreen(initialSection: BusinessSection.customers),
+          '/suppliers': (_) =>
+              const HomeLedgerScreen(initialSection: BusinessSection.suppliers),
+          '/products': (_) =>
+              const HomeLedgerScreen(initialSection: BusinessSection.products),
           '/register': (_) => const RegisterScreen(),
           '/add-business-book': (_) => const AddBusinessBookScreen(),
           '/settings': (_) => const SettingsScreen(),
           '/settings/manage-books': (_) => const ManageBooksScreen(),
           '/settings/business-profile': (_) => const BusinessProfileScreen(),
           '/settings/invoice-template': (_) => const InvoiceTemplateScreen(),
-          '/dashboard': (_) => const BusinessDashboardScreen(),
-          '/bills': (_) => const BillListScreen(),
-          '/customers': (_) => const PartyListScreen(type: ContactType.customer),
-          '/suppliers': (_) => const PartyListScreen(type: ContactType.vendor),
-          '/products': (_) => const ProductListScreen(),
         },
       ),
     );

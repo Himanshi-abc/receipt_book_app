@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../core/models/book_model.dart';
+import '../../../core/models/invoice_model.dart';
+import '../../../core/navigation/business_section.dart';
 import '../../../core/services/transaction_repository.dart';
 import '../../../core/services/book_access_service.dart';
+import '../../bills/models/bill_date_range.dart';
+import '../../bills/screens/bill_list_screen.dart';
+import '../../bills/screens/due_bills_screen.dart';
 import '../../books/providers/book_provider.dart';
 import '../../invoices/services/invoice_repository.dart';
 import '../models/dashboard_date_range.dart';
@@ -13,13 +19,18 @@ import '../widgets/expense_category_breakdown.dart';
 import '../widgets/top_contacts_list.dart';
 import '../widgets/top_products_list.dart';
 import '../widgets/outstanding_summary_cards.dart';
+import '../widgets/due_bills_cards.dart';
 
 /// SRS 4.4 (only visible inside a Business Book) + Section 8's rule that
 /// "dashboard load" is one of the three actions gated by the shared
 /// writable-book check. A locked book shows the upgrade prompt instead of
 /// ever computing/rendering the numbers.
 class BusinessDashboardScreen extends StatefulWidget {
-  const BusinessDashboardScreen({super.key});
+  /// When true this renders without its own AppBar, because
+  /// HomeLedgerScreen's shell already provides one.
+  final bool embedded;
+
+  const BusinessDashboardScreen({super.key, this.embedded = false});
 
   @override
   State<BusinessDashboardScreen> createState() => _BusinessDashboardScreenState();
@@ -83,6 +94,41 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
     _load();
   }
 
+  /// Drill-downs recompute on the way back: the user may well have opened
+  /// one of these to settle a bill, and returning to stale totals would
+  /// look like the payment didn't register. (didChangeDependencies, which
+  /// does the initial load, doesn't fire on pop.)
+  void _openThenReload(Widget screen) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen))
+        .then((_) => mounted ? _load() : null);
+  }
+
+  /// Upcoming dues get their own short list - the Bills section has no
+  /// "due soon" filter to land on.
+  void _openUpcomingDue(Book book, BillDirection direction) {
+    _openThenReload(DueBillsScreen(
+      book: book,
+      direction: direction,
+      windowDays: DashboardData.upcomingDueWindowDays,
+    ));
+  }
+
+  /// Overdue goes to the Bills section itself, preselected - the filter
+  /// already exists there, and landing on the real screen means the user
+  /// can keep working (search, switch direction, open a bill) instead of
+  /// being parked in a read-only offshoot.
+  ///
+  /// All Time, not the usual This Month: the dashboard's overdue total is
+  /// till-date, so a month-scoped list would show less than the card that
+  /// opened it.
+  void _openOverdueBills(BillDirection direction) {
+    _openThenReload(BillListScreen(
+      initialDirection: direction,
+      initialStatusFilter: BillStatusFilter.overdue,
+      initialRangePreset: BillDateRangePreset.allTime,
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final bookProvider = context.watch<BookProvider>();
@@ -95,7 +141,7 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
     final access = bookProvider.accessFor(book);
 
     return Scaffold(
-      appBar: AppBar(title: Text('${book.name} · Dashboard')),
+      appBar: widget.embedded ? null : AppBar(title: Text('${book.name} · Dashboard')),
       body: !access.writable
           ? _buildLockedState(context, access)
           : _loading
@@ -129,6 +175,41 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
                         totalPendingToSuppliersPaise: _data!.totalPendingToSuppliersPaise,
                         pendingSupplierBillsCount: _data!.pendingSupplierBillsCount,
                         businessCashflowPaise: _data!.businessCashflowPaise,
+                        // Money owed by customers lives in Customers;
+                        // money owed to suppliers lives in Suppliers.
+                        // Inside the shell these switch section in place;
+                        // standalone they still push the route.
+                        onTapOutstanding: () => BusinessShellScope.goTo(
+                          context,
+                          BusinessSection.customers,
+                          fallbackRoute: '/customers',
+                          onReturn: () => mounted ? _load() : null,
+                        ),
+                        onTapPendingToSuppliers: () => BusinessShellScope.goTo(
+                          context,
+                          BusinessSection.suppliers,
+                          fallbackRoute: '/suppliers',
+                          onReturn: () => mounted ? _load() : null,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      UpcomingDueCards(
+                        upcomingPurchaseDuePaise: _data!.upcomingPurchaseDuePaise,
+                        upcomingPurchaseDueCount: _data!.upcomingPurchaseDueCount,
+                        upcomingSalesDuePaise: _data!.upcomingSalesDuePaise,
+                        upcomingSalesDueCount: _data!.upcomingSalesDueCount,
+                        onTapPurchase: () =>
+                            _openUpcomingDue(book, BillDirection.purchase),
+                        onTapSales: () => _openUpcomingDue(book, BillDirection.sales),
+                      ),
+                      const SizedBox(height: 16),
+                      OverdueBillCards(
+                        overduePurchasePaise: _data!.overduePurchasePaise,
+                        overduePurchaseCount: _data!.overduePurchaseCount,
+                        overdueSalesPaise: _data!.overdueSalesPaise,
+                        overdueSalesCount: _data!.overdueSalesCount,
+                        onTapPurchase: () => _openOverdueBills(BillDirection.purchase),
+                        onTapSales: () => _openOverdueBills(BillDirection.sales),
                       ),
                       const SizedBox(height: 16),
                       _sectionCard(

@@ -88,6 +88,13 @@ class CreateBillScreen extends StatefulWidget {
 class _CreateBillScreenState extends State<CreateBillScreen> {
   Contact? _selectedParty;
   DateTime _billDate = DateTime.now();
+
+  /// Defaults to bill date + [Invoice.defaultCreditDays], and keeps
+  /// tracking the bill date until the user picks a due date themselves -
+  /// after that it's theirs and moving the bill date won't overwrite it.
+  DateTime _dueDate = DateTime.now().add(const Duration(days: Invoice.defaultCreditDays));
+  bool _dueDatePickedManually = false;
+
   final List<_BillLineItemDraft> _lineItems = [];
 
   final _discountCtrl = TextEditingController();
@@ -116,6 +123,11 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
     final existing = widget.existingInvoice;
     if (existing != null) {
       _billDate = existing.invoiceDate;
+      // effectiveDueDate, not dueDate: a bill saved before due dates
+      // existed should open showing the same +7 default it would get now,
+      // and treating it as "already chosen" keeps that shown value stable.
+      _dueDate = existing.effectiveDueDate;
+      _dueDatePickedManually = true;
       _lineItems.addAll(existing.lineItems.map(_BillLineItemDraft.fromLineItem));
       _discountCtrl.text = _editableOrBlank(existing.discountPaise);
       _chargeDescCtrl.text = existing.additionalChargeDescription ?? '';
@@ -164,8 +176,31 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
       lastDate: DateTime(2100),
     );
     if (picked != null) {
-      setState(() => _billDate = picked);
+      setState(() {
+        _billDate = picked;
+        // A due date the user never touched keeps following the bill date.
+        // One they did pick is only nudged if the new bill date would leave
+        // it in the past, which can't be what they meant.
+        if (!_dueDatePickedManually || _dueDate.isBefore(picked)) {
+          _dueDate = picked.add(const Duration(days: Invoice.defaultCreditDays));
+        }
+      });
       _loadTaxRates();
+    }
+  }
+
+  Future<void> _pickDueDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dueDate.isBefore(_billDate) ? _billDate : _dueDate,
+      firstDate: _billDate, // a bill can't fall due before it was raised
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        _dueDate = picked;
+        _dueDatePickedManually = true;
+      });
     }
   }
 
@@ -261,6 +296,7 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
         ? await InvoiceRepository().createInvoice(
             book: widget.book,
             invoiceDate: _billDate,
+            dueDate: _dueDate,
             customerContactId: _selectedParty!.id,
             customerName: _selectedParty!.name,
             customerState: widget.book.state ?? '',
@@ -277,6 +313,7 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
         : await InvoiceRepository().updateInvoice(
             existing: existing,
             invoiceDate: _billDate,
+            dueDate: _dueDate,
             customerContactId: _selectedParty!.id,
             customerName: _selectedParty!.name,
             customerState: widget.book.state ?? '',
@@ -316,14 +353,31 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Date'),
-            subtitle: Text('${_billDate.day}/${_billDate.month}/${_billDate.year}'),
-            trailing: const Icon(Icons.calendar_today),
-            onTap: _pickDate,
+          Row(
+            children: [
+              Expanded(
+                child: _DateField(
+                  label: 'Date',
+                  date: _billDate,
+                  icon: Icons.calendar_today,
+                  onTap: _pickDate,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _DateField(
+                  label: 'Due Date',
+                  date: _dueDate,
+                  icon: Icons.event_outlined,
+                  helperText: _dueDatePickedManually
+                      ? null
+                      : 'Default: ${Invoice.defaultCreditDays} days',
+                  onTap: _pickDueDate,
+                ),
+              ),
+            ],
           ),
-          const Divider(),
+          const Divider(height: 32),
           Text(_partyLabel, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           if (_selectedParty != null)
@@ -521,6 +575,49 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A read-only, tap-to-pick date input. Uses InputDecorator so it carries
+/// the same border, label and helper-text treatment as the TextFields it
+/// sits beside - a ListTile next to a TextField reads as two different
+/// kinds of control.
+class _DateField extends StatelessWidget {
+  final String label;
+  final DateTime date;
+  final IconData icon;
+  final String? helperText;
+  final VoidCallback onTap;
+
+  const _DateField({
+    required this.label,
+    required this.date,
+    required this.icon,
+    required this.onTap,
+    this.helperText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          // A blank (not null) helper reserves the line, so the two fields
+          // stay the same height when only one of them has helper text.
+          helperText: helperText ?? ' ',
+          helperMaxLines: 1,
+          border: const OutlineInputBorder(),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          suffixIcon: Icon(icon, size: 18),
+        ),
+        child: Text(
+          '${date.day.toString().padLeft(2, '0')}/'
+          '${date.month.toString().padLeft(2, '0')}/${date.year}',
         ),
       ),
     );

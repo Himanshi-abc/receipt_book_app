@@ -2,7 +2,16 @@
 /// idea as a billing app's period filter (e.g. Swipe): a handful of common
 /// presets plus a custom range, used to scope both the bill list and the
 /// Total/Pending summary cards to the same window.
-enum BillDateRangePreset { thisMonth, lastMonth, thisWeek, lastWeek, thisYear, lastYear, custom }
+enum BillDateRangePreset {
+  thisMonth,
+  lastMonth,
+  thisWeek,
+  lastWeek,
+  thisYear,
+  lastYear,
+  allTime,
+  custom,
+}
 
 class BillDateRange {
   final BillDateRangePreset preset;
@@ -45,6 +54,15 @@ class BillDateRange {
         final start = DateTime(now.year - 1, 1, 1);
         final end = DateTime(now.year, 1, 1).subtract(const Duration(seconds: 1));
         return BillDateRange(preset: preset, start: start, end: end);
+      case BillDateRangePreset.allTime:
+        // Wide enough to hold every bill this app can create (the bill-date
+        // picker itself only allows 2015-2100), so nothing is ever hidden
+        // by the period filter.
+        return BillDateRange(
+          preset: preset,
+          start: DateTime(2000),
+          end: DateTime(2200),
+        );
       case BillDateRangePreset.custom:
         return BillDateRange(
           preset: preset,
@@ -68,10 +86,26 @@ class BillDateRange {
         return 'This Year';
       case BillDateRangePreset.lastYear:
         return 'Last Year';
+      case BillDateRangePreset.allTime:
+        return 'All Time';
       case BillDateRangePreset.custom:
-        return '${start.day}/${start.month}/${start.year} – ${end.day}/${end.month}/${end.year}';
+        // "5 Aug – 12 Aug 2026" rather than "5/8/2026 – 12/8/2026": this
+        // label sits on the closed dropdown next to the Sales/Purchase
+        // toggle, so every character it saves is width the toggle keeps.
+        // The year appears once when both ends share it, and month names
+        // sidestep the 5/8 vs 8/5 ambiguity.
+        final sameYear = start.year == end.year;
+        return '${_shortDate(start, withYear: !sameYear)} – ${_shortDate(end)}';
     }
   }
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  static String _shortDate(DateTime d, {bool withYear = true}) =>
+      '${d.day} ${_months[d.month - 1]}${withYear ? ' ${d.year}' : ''}';
 
   bool contains(DateTime date) => !date.isBefore(start) && !date.isAfter(end);
 }
