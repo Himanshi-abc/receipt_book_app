@@ -8,6 +8,39 @@ import '../../../core/models/book_model.dart';
 import '../providers/book_provider.dart';
 import 'add_business_book_screen.dart' show kIndianStates;
 
+/// Turns a raw Storage exception into something actionable, for the logo/
+/// signature uploads below.
+///
+/// `unauthorized` / `unauthenticated` / `object-not-found` / `unknown` here
+/// (as opposed to a rule genuinely denying one particular user) almost
+/// always means the *whole project* lost access to Cloud Storage - the most
+/// common cause, as of the Feb 2026 policy change, is the Firebase project
+/// still being on the free Spark plan, which no longer gets any Storage
+/// access at all (reads and writes both return 402/403, on every platform -
+/// this has nothing to do with logo/signature specifically, or with
+/// Windows). If that's it, every other Storage upload in the app -
+/// receipts, invoice PDFs - is failing exactly the same way; they just
+/// retry silently in the background instead of telling anyone, which is
+/// why this screen is the one place the problem actually gets seen.
+///
+/// A free function, not a method, so this logic can be tested without a
+/// widget around it - see [_BusinessProfileScreenState._pickAndUploadImage],
+/// its only caller.
+String businessProfileStorageErrorMessage(
+  FirebaseException e, {
+  required bool isSignature,
+}) {
+  final what = isSignature ? 'signature' : 'logo';
+  const billingLikelyCodes = {'unauthorized', 'unauthenticated', 'object-not-found', 'unknown'};
+  if (billingLikelyCodes.contains(e.code)) {
+    return "Couldn't upload the $what - Cloud Storage isn't reachable "
+        '(${e.code}). If this project is still on Firebase\'s free Spark '
+        'plan, Storage requires the Blaze plan as of Feb 2026 - check '
+        'Firebase Console > Project Settings > Usage and billing.';
+  }
+  return "Couldn't upload the $what: ${e.code} - ${e.message ?? 'no further detail from Firebase.'}";
+}
+
 /// Full Business Profile for the current Business Book - reached from
 /// Settings. Unlike AddBusinessBookScreen (which only captures the
 /// minimum needed to create a book), this covers everything a business
@@ -139,6 +172,21 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
           _logoUrl = url;
         }
       });
+    } on FirebaseException catch (e) {
+      // This is the only Storage upload path in the app that surfaces its
+      // failure to the user at all - the receipt-photo and invoice-PDF
+      // uploads elsewhere both fail silently and retry later in the
+      // background (deliberately - see OcrReviewFormScreen's
+      // _uploadReceiptInBackground). So a Storage problem that's actually
+      // affecting the whole project - not just this screen - will only
+      // ever be *seen* here, which makes the raw exception worth turning
+      // into something a non-technical user (and future-us) can act on.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(businessProfileStorageErrorMessage(e, isSignature: isSignature)),
+          duration: const Duration(seconds: 10),
+        ));
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

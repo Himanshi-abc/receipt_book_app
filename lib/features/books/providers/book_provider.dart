@@ -64,16 +64,27 @@ class BookProvider extends ChangeNotifier {
     return book;
   }
 
-  /// Product decision: every new Business Book starts with one default
-  /// customer contact named after the business itself, and one default
-  /// Income category ("Daily Counter") for quick day-to-day sales entry -
-  /// Business Book Income otherwise has no built-in categories at all.
+  /// Product decision: every new Business Book starts with two default
+  /// Customer contacts - "Daily Counter" (a catch-all party for walk-in /
+  /// cash sales that don't warrant creating a real contact) and "Default
+  /// Customer" (a generic fallback so a bill is never blocked on picking a
+  /// party) - plus one default Income category, also "Daily Counter", for
+  /// quick day-to-day sales entry. Business Book Income otherwise has no
+  /// built-in categories at all.
+  ///
+  /// The contact and the category sharing the name "Daily Counter" is
+  /// intentional, not a collision - a user billing to that customer while
+  /// categorising the matching ledger entry under the same name is exactly
+  /// the point.
   Future<void> _seedBusinessBookDefaults(Book book) async {
-    await ContactRepository().saveContact(
-      bookId: book.id,
-      name: book.name,
-      type: ContactType.customer,
-    );
+    final contactRepo = ContactRepository();
+    for (final name in const ['Daily Counter', 'Default Customer']) {
+      await contactRepo.saveContact(
+        bookId: book.id,
+        name: name,
+        type: ContactType.customer,
+      );
+    }
     await CategoryRepository().createCategory(
       bookId: book.id,
       name: 'Daily Counter',

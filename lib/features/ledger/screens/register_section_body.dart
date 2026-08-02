@@ -6,6 +6,7 @@ import '../../../core/design/app_spacing.dart';
 import '../../../core/models/transaction_model.dart';
 import '../../../core/models/category_model.dart';
 import '../../../core/services/transaction_repository.dart';
+import '../../../core/services/category_repository.dart';
 import '../../../core/services/book_access_service.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_search_field.dart';
@@ -14,6 +15,29 @@ import '../services/register_excel_service.dart';
 import '../widgets/transaction_tile.dart';
 import '../../scan/screens/scan_choice_screen.dart';
 import '../../transaction_detail/screens/transaction_detail_screen.dart';
+
+/// The categories the Register's "Categories" filter can offer for a book.
+///
+/// Business Book: only [ownCategories] - the book's own saved categories,
+/// and nothing else. Matches OcrReviewFormScreen's entry form (see its
+/// _categoryOptions), which already treats a Business Book as having no
+/// built-in categories at all - only what the user created for *this*
+/// book. Individual Book: the fixed [Category.defaultsFor] list, with the
+/// book's own categories layered on top - same combination the entry form
+/// uses there too.
+///
+/// A free function, not a method on [RegisterSectionBodyState], so the
+/// logic that was actually wrong - the filter offering categories that
+/// don't exist in this book - can be tested without a Firestore-backed
+/// widget around it.
+List<Category> registerCategoryOptions({
+  required bool isBusiness,
+  required List<Category> ownCategories,
+}) =>
+    [
+      if (!isBusiness) ...Category.defaultsFor(isBusiness),
+      ...ownCategories,
+    ];
 
 /// Individual Book only: date filter for the register list, matching the
 /// same "tab dropdown" UI as the Categories filter. "This Year"/"Prev Year"
@@ -45,9 +69,16 @@ class RegisterSectionBody extends StatefulWidget {
 
 class RegisterSectionBodyState extends State<RegisterSectionBody> {
   final _repo = TransactionRepository();
+  final _categoryRepo = CategoryRepository();
   final _searchCtrl = TextEditingController();
   List<AppTransaction> _all = [];
   List<AppTransaction> _filtered = [];
+
+  /// This book's own categories - the only ones the Categories filter
+  /// should ever offer for a Business Book (see [_categoryMenuOptions]).
+  /// Loaded alongside the transactions, from the same book.
+  List<Category> _customCategories = [];
+
   bool _loading = true;
   TxType? _typeFilter;
   String? _categoryFilter;
@@ -66,8 +97,10 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
     if (bookId == null) return;
     setState(() => _loading = true);
     final txs = await _repo.loadTransactions(bookId);
+    final categories = await _categoryRepo.loadCategories(bookId);
     setState(() {
       _all = txs;
+      _customCategories = categories;
       _applyFilters();
       _loading = false;
     });
@@ -117,21 +150,27 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
   }
 
   String _categoryNameFor(String categoryId, bool isBusiness) {
-    final matches =
-        Category.defaultsFor(isBusiness).where((c) => c.id == categoryId);
+    final matches = registerCategoryOptions(
+      isBusiness: isBusiness,
+      ownCategories: _customCategories,
+    ).where((c) => c.id == categoryId);
     return matches.isEmpty ? categoryId : matches.first.name;
   }
 
-  List<Category> _categoryMenuOptions(bool isBusiness) => (_typeFilter == null
-          ? Category.defaultsFor(isBusiness)
-          : Category.defaultsFor(isBusiness).where((c) => c.type == _typeFilter))
-      .toList();
+  List<Category> _categoryMenuOptions(bool isBusiness) {
+    final all = registerCategoryOptions(
+      isBusiness: isBusiness,
+      ownCategories: _customCategories,
+    );
+    return (_typeFilter == null ? all : all.where((c) => c.type == _typeFilter))
+        .toList();
+  }
 
   /// A "Categories" tab-style dropdown, leftmost in the filter row (before
   /// "All") - matches the underlined tab look used elsewhere in the design
   /// (active tab in accent color with an underline). Same for both
-  /// Individual and Business Books; [isBusiness] only picks which
-  /// category list (see Category.defaultsFor) the dropdown offers.
+  /// Individual and Business Books; [isBusiness] only picks which category
+  /// list (see [registerCategoryOptions]) the dropdown offers.
   Widget _buildCategoriesFilterTab(BuildContext context, bool isBusiness) {
     final active = _categoryFilter != null || _categoryMenuOpen;
     final accentColor = Theme.of(context).colorScheme.primary;

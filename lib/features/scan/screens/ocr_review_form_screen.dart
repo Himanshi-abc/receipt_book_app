@@ -5,14 +5,17 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
+import '../../../core/models/contact_model.dart';
 import '../../../core/models/transaction_model.dart';
 import '../../../core/models/category_model.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/services/attachment_file_service.dart';
+import '../../../core/services/contact_repository.dart';
 import '../../../core/services/transaction_repository.dart';
 import '../../../core/services/category_repository.dart';
 import '../../../core/widgets/attachment_card.dart';
 import '../../books/providers/book_provider.dart';
+import '../../khata/widgets/party_picker_field.dart';
 import '../services/ocr_service.dart';
 
 /// SRS 4.2 steps 5-7 + the hard rule: "If OCR fails completely or the user
@@ -34,8 +37,8 @@ import '../services/ocr_service.dart';
 ///   categories at all (kept fully separate from the Individual Book's
 ///   defaults) - only categories the user has created for this book, plus
 ///   an option to create a new one (of the matching Income/Expense type)
-///   on the spot. Every new Business Book is seeded with one seed
-///   customer contact (named after the business) and one seed Income
+///   on the spot. Every new Business Book is seeded with two Customer
+///   contacts ("Daily Counter", "Default Customer") and one Income
 ///   category ("Daily Counter") - see [BookProvider.createBusinessBook].
 class OcrReviewFormScreen extends StatefulWidget {
   final TxType type;
@@ -61,10 +64,22 @@ class OcrReviewFormScreen extends StatefulWidget {
 class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
   late DateTime _date;
   late final TextEditingController _amountCtrl;
+
+  /// Individual Book only now - Business Book's party is [_selectedParty],
+  /// picked through [PartyPickerField] rather than typed. Kept around (and
+  /// still pre-filled from OCR) purely for the Individual Book branch.
   late final TextEditingController _vendorCtrl;
   final _notesCtrl = TextEditingController();
 
   Category? _category;
+
+  /// Business Book only: the Customer (Income) / Vendor (Expense) this
+  /// entry is linked to - same PartyPickerField the Bills form uses, so
+  /// picking a party behaves identically in both places. Null until the
+  /// user picks one, or once resolved from [AppTransaction.contactId] when
+  /// editing.
+  Contact? _selectedParty;
+
   File? _pickedReceiptFile; // chosen via "Choose File" - any format, alternative to camera
   bool _saving = false;
 
@@ -104,11 +119,31 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
     if (existing != null) {
       _notesCtrl.text = existing.notes ?? '';
       _keptExistingReceiptImages = existing.receiptImages;
+      if (existing.contactId != null) {
+        final bookId = context.read<BookProvider>().currentBook?.id;
+        if (bookId != null) _loadExistingParty(bookId, existing.contactId!);
+      }
     }
     _loadCustomCategories();
   }
 
   bool get _isIncome => widget.type == TxType.income;
+
+  /// Income books to a Customer, Expense to a Vendor - same direction Bills
+  /// uses for Sales/Purchase (see CreateBillScreen._partyType).
+  ContactType get _partyType => _isIncome ? ContactType.customer : ContactType.vendor;
+  String get _partyLabel => _isIncome ? 'Customer' : 'Vendor';
+
+  /// Resolves [AppTransaction.contactId] back to a [Contact] so editing an
+  /// existing Business Book entry opens with its party already selected,
+  /// the same way CreateBillScreen re-selects a bill's party on edit.
+  Future<void> _loadExistingParty(String bookId, String contactId) async {
+    final contacts = await ContactRepository().loadContacts(bookId, type: _partyType);
+    if (!mounted) return;
+    setState(() {
+      _selectedParty = contacts.where((c) => c.id == contactId).firstOrNull;
+    });
+  }
 
   Future<void> _loadCustomCategories() async {
     final book = context.read<BookProvider>().currentBook;
@@ -204,7 +239,15 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
 
   bool _canSave(bool isBusiness) {
     if (_amountCtrl.text.trim().isEmpty) return false;
-    if (_vendorCtrl.text.trim().isEmpty) return false;
+    // Business Book: a party must be picked from Customers/Suppliers (or
+    // added/imported on the spot) - there's no free-text fallback, same as
+    // a bill can't be saved without a party. Individual Book keeps the
+    // plain typed name.
+    if (isBusiness) {
+      if (_selectedParty == null) return false;
+    } else if (_vendorCtrl.text.trim().isEmpty) {
+      return false;
+    }
     if (!isBusiness) return true; // Individual Book: nothing else required
     // Business Book (Income and Expense): receipt is always required, no bypass.
     return _hasAnyReceipt;
@@ -214,6 +257,7 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
     setState(() => _saving = true);
     final bookProvider = context.read<BookProvider>();
     final book = bookProvider.currentBook!;
+    final isBusiness = book.isBusiness;
     final repo = TransactionRepository();
 
     // Upload receipt photo/file in the background; don't block the local
@@ -240,7 +284,12 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
       type: widget.type,
       date: _date,
       amountPaise: Money.rupeesStringToPaise(_amountCtrl.text),
-      vendorOrCustomerName: _vendorCtrl.text.trim(),
+      // Business Book: the picked party's name and id, kept in sync so the
+      // ledger and the Customers/Suppliers section always agree on who
+      // this entry belongs to. Individual Book: the typed name, no contact.
+      vendorOrCustomerName:
+          isBusiness ? _selectedParty!.name : _vendorCtrl.text.trim(),
+      contactId: isBusiness ? _selectedParty!.id : null,
       categoryId: _category?.id,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       businessUsePercent: null,
@@ -378,14 +427,39 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
             trailing: const Icon(Icons.calendar_today),
             onTap: _pickDate,
           ),
-          TextField(
-            controller: _vendorCtrl,
-            decoration: InputDecoration(
-                labelText: isIncome
-                    ? (isBusiness ? 'Payer / Customer name' : 'Payer / Customer name *')
-                    : (isBusiness ? 'Vendor name' : 'Vendor name *')),
-            onChanged: (_) => setState(() {}),
-          ),
+          // Business Book: the party is picked from Customers/Suppliers
+          // (or added/imported on the spot) - same PartyPickerField the
+          // Bills form uses, rather than a freely-typed name. Individual
+          // Book keeps the plain text field; it has no Customers/Suppliers
+          // section for a picker to draw from.
+          if (isBusiness) ...[
+            Text(_partyLabel, style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            PartyPickerField(
+              bookId: book!.id,
+              type: _partyType,
+              label: _partyLabel,
+              selected: _selectedParty,
+              onChanged: (c) => setState(() => _selectedParty = c),
+            ),
+            if (_selectedParty == null &&
+                (widget.ocrResult.vendorName?.trim().isNotEmpty ?? false))
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Receipt shows "${widget.ocrResult.vendorName}" - select or add a '
+                  'matching ${_partyLabel.toLowerCase()} above.',
+                  style: const TextStyle(color: Colors.orange, fontSize: 12),
+                ),
+              ),
+          ] else
+            TextField(
+              controller: _vendorCtrl,
+              decoration: InputDecoration(
+                  labelText:
+                      isIncome ? 'Payer / Customer name *' : 'Vendor name *'),
+              onChanged: (_) => setState(() {}),
+            ),
           const SizedBox(height: 12),
           TextField(
             controller: _amountCtrl,

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_contacts/flutter_contacts.dart' as fc;
 import 'package:uuid/uuid.dart';
 import '../../../core/models/book_model.dart';
 import '../../../core/models/contact_model.dart';
@@ -7,12 +6,12 @@ import '../../../core/models/invoice_model.dart';
 import '../../../core/models/product_model.dart';
 import '../../../core/services/contact_repository.dart';
 import '../../../core/utils/money.dart';
-import '../../../core/utils/tax_math.dart';
 import '../../invoices/services/invoice_repository.dart';
 import '../../invoices/services/tax_rule_config_repository.dart';
-import '../../khata/screens/add_party_screen.dart';
+import '../../khata/widgets/party_picker_field.dart';
 import '../../products/screens/add_product_screen.dart';
 import '../../products/services/product_repository.dart';
+import 'product_line_item_screen.dart';
 
 const kPaymentModes = ['Cash', 'UPI', 'Card', 'Bank Transfer', 'Cheque', 'Other'];
 
@@ -204,54 +203,6 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
     }
   }
 
-  Future<void> _selectExistingParty() async {
-    final bookId = widget.book.id;
-    final contacts = await ContactRepository().loadContacts(bookId, type: _partyType);
-    if (!mounted) return;
-    final picked = await showModalBottomSheet<Contact>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => _ExistingPartySheet(contacts: contacts, partyLabel: _partyLabel),
-    );
-    if (picked != null) setState(() => _selectedParty = picked);
-  }
-
-  Future<void> _addPartyManually() async {
-    final result = await Navigator.push<Contact>(
-      context,
-      MaterialPageRoute(builder: (_) => AddPartyScreen(defaultType: _partyType)),
-    );
-    if (result != null) setState(() => _selectedParty = result);
-  }
-
-  Future<void> _importFromContacts() async {
-    final granted = await fc.FlutterContacts.requestPermission();
-    if (!granted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contacts access was denied.')),
-        );
-      }
-      return;
-    }
-    final deviceContacts = await fc.FlutterContacts.getContacts(withProperties: true);
-    if (!mounted) return;
-    final picked = await showModalBottomSheet<fc.Contact>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => _DeviceContactPickerSheet(contacts: deviceContacts),
-    );
-    if (picked == null) return;
-
-    final saved = await ContactRepository().saveContact(
-      bookId: widget.book.id,
-      name: picked.displayName,
-      phone: picked.phones.isNotEmpty ? picked.phones.first.number : null,
-      type: _partyType,
-    );
-    setState(() => _selectedParty = saved);
-  }
-
   Future<void> _addProduct() async {
     final bookId = widget.book.id;
     final products = await ProductRepository().loadProducts(bookId);
@@ -261,16 +212,21 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
       isScrollControlled: true,
       builder: (ctx) => _ProductPickerSheet(bookId: bookId, initialProducts: products),
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
 
-    final draft = _BillLineItemDraft(productId: picked.id, taxRate: picked.taxRatePercent);
-    draft.descCtrl.text = picked.name;
-    draft.hsnCtrl.text = picked.hsnCode ?? '';
-    final exclusivePaise = picked.priceIncludesTax
-        ? exclusiveFromInclusive(picked.sellingPricePaise, picked.taxRatePercent)
-        : picked.sellingPricePaise;
-    draft.rateCtrl.text = Money.paiseToEditableString(exclusivePaise);
-    setState(() => _lineItems.add(draft));
+    // Picking a product no longer drops it straight onto the bill at its
+    // catalogue price: the agreed price and quantity are settled first, on
+    // a screen where the with-tax and without-tax figures are both
+    // editable. See ProductLineItemScreen.
+    final line = await Navigator.push<InvoiceLineItem>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProductLineItemScreen(product: picked),
+      ),
+    );
+    if (line == null) return;
+
+    setState(() => _lineItems.add(_BillLineItemDraft.fromLineItem(line)));
   }
 
   void _removeLineItem(_BillLineItemDraft draft) {
@@ -380,36 +336,13 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
           const Divider(height: 32),
           Text(_partyLabel, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          if (_selectedParty != null)
-            Card(
-              child: ListTile(
-                title: Text(_selectedParty!.name),
-                subtitle: Text(_selectedParty!.phone ?? ''),
-                trailing: TextButton(onPressed: _selectExistingParty, child: const Text('Change')),
-              ),
-            )
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.list_alt),
-                  label: Text('Select $_partyLabel'),
-                  onPressed: _selectExistingParty,
-                ),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.person_add_outlined),
-                  label: Text('Add $_partyLabel'),
-                  onPressed: _addPartyManually,
-                ),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.contacts_outlined),
-                  label: const Text('Import from Contacts'),
-                  onPressed: _importFromContacts,
-                ),
-              ],
-            ),
+          PartyPickerField(
+            bookId: widget.book.id,
+            type: _partyType,
+            label: _partyLabel,
+            selected: _selectedParty,
+            onChanged: (c) => setState(() => _selectedParty = c),
+          ),
           const Divider(height: 32),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -429,6 +362,18 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
               child: Text('No products added yet.', style: TextStyle(color: Colors.grey.shade600)),
             ),
           const Divider(height: 32),
+          TextField(
+            controller: _chargeDescCtrl,
+            decoration: const InputDecoration(labelText: 'Additional Charge description (optional)'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _chargeAmountCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Additional Charge amount (₹, optional)'),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -458,18 +403,6 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _chargeDescCtrl,
-            decoration: const InputDecoration(labelText: 'Additional Charge description (optional)'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _chargeAmountCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Additional Charge amount (₹, optional)'),
-            onChanged: (_) => setState(() {}),
-          ),
           const Divider(height: 32),
           Align(
             alignment: Alignment.centerRight,
@@ -480,7 +413,15 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
           TextField(
             controller: _amountReceivedCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Amount Received (₹)'),
+            // Label only - the field, its controller and everything saved
+            // through it stay "amountReceived" throughout, on a Purchase
+            // bill exactly as on a Sale. Money paid to a supplier isn't
+            // "received" from the business's point of view, so the UI text
+            // says so; the underlying model doesn't need a second concept
+            // for what is still the same field on the Invoice.
+            decoration: InputDecoration(
+              labelText: _isSales ? 'Amount Received (₹)' : 'Amount Paid (₹)',
+            ),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
@@ -624,69 +565,6 @@ class _DateField extends StatelessWidget {
   }
 }
 
-class _ExistingPartySheet extends StatefulWidget {
-  final List<Contact> contacts;
-  final String partyLabel;
-  const _ExistingPartySheet({required this.contacts, required this.partyLabel});
-
-  @override
-  State<_ExistingPartySheet> createState() => _ExistingPartySheetState();
-}
-
-class _ExistingPartySheetState extends State<_ExistingPartySheet> {
-  final _searchCtrl = TextEditingController();
-  late List<Contact> _filtered = widget.contacts;
-
-  void _filter(String query) {
-    final q = query.trim().toLowerCase();
-    setState(() {
-      _filtered = q.isEmpty
-          ? widget.contacts
-          : widget.contacts.where((c) => c.name.toLowerCase().contains(q)).toList();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.7,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: TextField(
-                controller: _searchCtrl,
-                decoration: InputDecoration(
-                  hintText: 'Search ${widget.partyLabel.toLowerCase()}s',
-                  prefixIcon: const Icon(Icons.search),
-                  border: const OutlineInputBorder(),
-                ),
-                onChanged: _filter,
-              ),
-            ),
-            Expanded(
-              child: _filtered.isEmpty
-                  ? Center(child: Text('No ${widget.partyLabel.toLowerCase()}s yet.'))
-                  : ListView.builder(
-                      itemCount: _filtered.length,
-                      itemBuilder: (ctx, i) {
-                        final c = _filtered[i];
-                        return ListTile(
-                          title: Text(c.name),
-                          subtitle: Text(c.phone ?? ''),
-                          onTap: () => Navigator.pop(context, c),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _ProductPickerSheet extends StatefulWidget {
   final String bookId;
   final List<Product> initialProducts;
@@ -778,70 +656,6 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
                           title: Text(p.name),
                           subtitle: Text(Money.format(p.sellingPricePaise)),
                           onTap: () => Navigator.pop(context, p),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Duplicated from AddPartyScreen's private device-contact picker rather
-/// than shared, to keep this screen's changes self-contained.
-class _DeviceContactPickerSheet extends StatefulWidget {
-  final List<fc.Contact> contacts;
-  const _DeviceContactPickerSheet({required this.contacts});
-
-  @override
-  State<_DeviceContactPickerSheet> createState() => _DeviceContactPickerSheetState();
-}
-
-class _DeviceContactPickerSheetState extends State<_DeviceContactPickerSheet> {
-  final _searchCtrl = TextEditingController();
-  late List<fc.Contact> _filtered = widget.contacts;
-
-  void _filter(String query) {
-    final q = query.trim().toLowerCase();
-    setState(() {
-      _filtered = q.isEmpty
-          ? widget.contacts
-          : widget.contacts.where((c) => c.displayName.toLowerCase().contains(q)).toList();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.7,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: TextField(
-                controller: _searchCtrl,
-                decoration: const InputDecoration(
-                  hintText: 'Search contacts',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: _filter,
-              ),
-            ),
-            Expanded(
-              child: _filtered.isEmpty
-                  ? const Center(child: Text('No contacts found.'))
-                  : ListView.builder(
-                      itemCount: _filtered.length,
-                      itemBuilder: (ctx, i) {
-                        final c = _filtered[i];
-                        return ListTile(
-                          title: Text(c.displayName),
-                          subtitle: Text(c.phones.isNotEmpty ? c.phones.first.number : ''),
-                          onTap: () => Navigator.pop(context, c),
                         );
                       },
                     ),

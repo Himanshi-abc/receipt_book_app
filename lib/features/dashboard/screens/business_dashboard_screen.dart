@@ -5,6 +5,7 @@ import '../../../core/models/invoice_model.dart';
 import '../../../core/navigation/business_section.dart';
 import '../../../core/services/transaction_repository.dart';
 import '../../../core/services/book_access_service.dart';
+import '../../../core/widgets/app_date_range_dialog.dart';
 import '../../bills/models/bill_date_range.dart';
 import '../../bills/screens/bill_list_screen.dart';
 import '../../bills/screens/due_bills_screen.dart';
@@ -71,18 +72,37 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
 
   Future<void> _pickCustomRange() async {
     final now = DateTime.now();
-    final picked = await showDateRangePicker(
-      context: context,
+    // showDateRangePicker used to sit here directly, seeded with
+    // _range.start/_range.end as its initialDateRange. That silently broke
+    // on the very first tap for most people: a preset's `end` can be after
+    // today (e.g. "This Month" runs to the last calendar day, which is
+    // still in the future until the month closes), and handing the picker
+    // an initialDateRange outside [firstDate, lastDate] doesn't fail
+    // loudly - the dialog just doesn't render a sane range. AppDateRangeDialog
+    // clamps the incoming start/end into range itself, which is the fix -
+    // see AppDateRangeDialog's _clamp and the same bug already hit (and
+    // fixed) in the Bills section's custom-range picker.
+    final picked = await AppDateRangeDialog.show(
+      context,
+      initialStart: _range.start,
+      initialEnd: _range.end,
       firstDate: DateTime(now.year - 5),
       lastDate: now,
-      initialDateRange: DateTimeRange(start: _range.start, end: _range.end),
+      title: 'Custom date range',
     );
     if (picked != null) {
       setState(() {
         _range = DashboardDateRange.forPreset(
           DateRangePreset.custom,
           customStart: picked.start,
-          customEnd: picked.end,
+          // End-of-day: DashboardDateRange.contains does an exact
+          // isAfter(end) check, and a transaction dated on the selected
+          // end day almost always carries a real time-of-day (new entries
+          // default to DateTime.now(), not midnight) - leaving `end` at
+          // the picker's midnight would silently drop same-day entries
+          // from the range that's supposed to include them.
+          customEnd: DateTime(
+              picked.end.year, picked.end.month, picked.end.day, 23, 59, 59),
         );
       });
       _load();
