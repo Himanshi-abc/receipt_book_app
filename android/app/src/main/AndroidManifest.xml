@@ -6,7 +6,7 @@
         
     
     <application
-        android:label="receipt_book_app"
+        android:label="Dhandho"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

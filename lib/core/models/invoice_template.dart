@@ -1,3 +1,5 @@
+import '../../l10n/app_localizations.dart';
+
 /// Invoice PDF appearance, selectable per Business Book (see
 /// InvoiceTemplateScreen) and applied consistently to every invoice that
 /// book generates thereafter (InvoicePdfService).
@@ -164,3 +166,43 @@ InvoiceTemplateStyle invoiceTemplateById(String? id) => kInvoiceTemplates.firstW
       (t) => t.id == id,
       orElse: () => kInvoiceTemplates.first,
     );
+
+/// The translated display name / blurb for a built-in template.
+///
+/// [InvoiceTemplateStyle.name] and `.description` stay English in the model
+/// because this file is deliberately framework-agnostic (see the header
+/// comment) and `id` is what gets persisted on the Book. Resolving by id
+/// here keeps the stored value stable while the picker reads in the app's
+/// language.
+String invoiceTemplateName(AppLocalizations l10n, InvoiceTemplateStyle style) =>
+    switch (style.id) {
+      'classic_mono' => l10n.templateClassicName,
+      'modern_blue' => l10n.templateModernBlueName,
+      'bold_navy' => l10n.templateBoldNavyName,
+      'emerald_fresh' => l10n.templateEmeraldFreshName,
+      'sunset_orange' => l10n.templateSunsetOrangeName,
+      'royal_purple' => l10n.templateRoyalPurpleName,
+      'slate_minimal' => l10n.templateSlateMinimalName,
+      'crimson_bold' => l10n.templateCrimsonBoldName,
+      'teal_corporate' => l10n.templateTealCorporateName,
+      'graphite_gold' => l10n.templateGraphiteGoldName,
+      _ => style.name,
+    };
+
+String invoiceTemplateDescription(
+  AppLocalizations l10n,
+  InvoiceTemplateStyle style,
+) =>
+    switch (style.id) {
+      'classic_mono' => l10n.templateClassicDesc,
+      'modern_blue' => l10n.templateModernBlueDesc,
+      'bold_navy' => l10n.templateBoldNavyDesc,
+      'emerald_fresh' => l10n.templateEmeraldFreshDesc,
+      'sunset_orange' => l10n.templateSunsetOrangeDesc,
+      'royal_purple' => l10n.templateRoyalPurpleDesc,
+      'slate_minimal' => l10n.templateSlateMinimalDesc,
+      'crimson_bold' => l10n.templateCrimsonBoldDesc,
+      'teal_corporate' => l10n.templateTealCorporateDesc,
+      'graphite_gold' => l10n.templateGraphiteGoldDesc,
+      _ => style.description,
+    };

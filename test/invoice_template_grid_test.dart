@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:receipt_book/core/design/app_theme.dart';
 import 'package:receipt_book/core/models/invoice_template.dart';
 import 'package:receipt_book/features/invoices/screens/invoice_template_screen.dart';
+import 'package:receipt_book/l10n/app_localizations.dart';
 
 /// Breakpoints and card sizing for the Invoice Template picker grid.
 void main() {
@@ -82,6 +83,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        
           theme: AppTheme.light(),
           home: Scaffold(
             body: InvoiceTemplateGrid(

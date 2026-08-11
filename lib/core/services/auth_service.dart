@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
@@ -10,25 +12,42 @@ class AuthService {
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
   // ---- Mobile OTP flow ----
+  //
+  // `verifyPhoneNumber` returns as soon as the request is *dispatched* - the
+  // codeSent / verificationFailed callbacks fire later, asynchronously. So we
+  // bridge them to a Completer: the returned Future only resolves once the SMS
+  // is actually sent (codeSent) and rejects with the real FirebaseAuthException
+  // on failure. Without this, callers `await` a Future that completes before
+  // the outcome is known - they'd navigate to the OTP screen even when sending
+  // failed, and any error thrown inside the callback would be swallowed
+  // (unhandled async) instead of reaching their try/catch.
   Future<void> sendOtp({
     required String phoneNumber,
     required void Function(String verificationId) onCodeSent,
-    required void Function(String error) onError,
-  }) async {
-    await _auth.verifyPhoneNumber(
+  }) {
+    final completer = Completer<void>();
+    _auth.verifyPhoneNumber(
       phoneNumber: phoneNumber,
       timeout: const Duration(seconds: 60),
-      verificationCompleted: (PhoneAuthCredential credential) async {
-        await _auth.signInWithCredential(credential);
-      },
+      // Android can auto-retrieve the code and hand back a credential. We
+      // deliberately do NOT auto sign-in here: the signup flow still has to
+      // link email/password onto this number, and a silent phone-only
+      // sign-in would skip that. The user enters the code on the OTP screen.
+      verificationCompleted: (PhoneAuthCredential credential) {},
       verificationFailed: (FirebaseAuthException e) {
-        onError(e.message ?? 'Verification failed');
+        if (!completer.isCompleted) completer.completeError(e);
       },
       codeSent: (String verificationId, int? resendToken) {
         onCodeSent(verificationId);
+        if (!completer.isCompleted) completer.complete();
       },
-      codeAutoRetrievalTimeout: (String verificationId) {},
+      // End of the auto-retrieval window; harmless once codeSent already
+      // completed the future, and a safety net if it somehow didn't.
+      codeAutoRetrievalTimeout: (String verificationId) {
+        if (!completer.isCompleted) completer.complete();
+      },
     );
+    return completer.future;
   }
 
   Future<UserCredential> verifyOtp({
@@ -42,6 +61,23 @@ class AuthService {
     return _auth.signInWithCredential(credential);
   }
 
+  /// Attaches an email/password credential to the currently signed-in user
+  /// (used right after phone-OTP verification during signup, so the mobile
+  /// number and the email/password become two sign-in methods on the same
+  /// account rather than two separate accounts).
+  Future<UserCredential> linkEmailPassword(String email, String password) {
+    final credential = EmailAuthProvider.credential(email: email, password: password);
+    return _auth.currentUser!.linkWithCredential(credential);
+  }
+
+  /// Deletes the currently signed-in user. Used to roll back the bare
+  /// phone-only account Firebase auto-creates when a Forgot Password OTP is
+  /// verified for a mobile number that was never actually registered.
+  Future<void> deleteCurrentUser() => _auth.currentUser!.delete();
+
+  Future<void> updatePassword(String newPassword) =>
+      _auth.currentUser!.updatePassword(newPassword);
+
   // ---- Email/password flow ----
   Future<UserCredential> signUpWithEmail(String email, String password) {
     return _auth.createUserWithEmailAndPassword(email: email, password: password);
@@ -50,6 +86,9 @@ class AuthService {
   Future<UserCredential> signInWithEmail(String email, String password) {
     return _auth.signInWithEmailAndPassword(email: email, password: password);
   }
+
+  Future<void> sendPasswordResetEmail(String email) =>
+      _auth.sendPasswordResetEmail(email: email);
 
   Future<void> signOut() => _auth.signOut();
 

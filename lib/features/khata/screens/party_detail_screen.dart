@@ -4,10 +4,13 @@ import 'package:provider/provider.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/design/app_colors.dart';
+import '../../../core/design/app_spacing.dart';
 import '../../../core/models/contact_model.dart';
 import '../../../core/models/khata_entry_model.dart';
 import '../../../core/services/contact_repository.dart';
 import '../../../core/utils/money.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../books/providers/book_provider.dart';
 import '../../../core/models/invoice_model.dart';
 import '../../bills/screens/create_bill_screen.dart';
@@ -45,7 +48,13 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
   Map<String, Invoice> _invoicesById = {};
 
   bool get _isCustomer => _contact.type == ContactType.customer;
-  String get _partyLabel => _isCustomer ? 'Customer' : 'Supplier';
+
+  /// The Customer/Supplier noun this screen builds its menu items and
+  /// delete prompt around. `partySupplier` rather than `partyVendor`: the
+  /// Parties section has always said "Supplier", and only the receipt form
+  /// says "Vendor".
+  String _partyLabel(AppLocalizations l10n) =>
+      _isCustomer ? l10n.partyCustomer : l10n.partySupplier;
 
   @override
   void initState() {
@@ -69,10 +78,11 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
   int get _balance => _runningBalances.isEmpty ? 0 : _runningBalances.last;
 
   Future<void> _call() async {
+    final l10n = AppLocalizations.of(context);
     final phone = _contact.phone?.trim();
     if (phone == null || phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No phone number saved for this party.')),
+        SnackBar(content: Text(l10n.noPhoneSaved)),
       );
       return;
     }
@@ -80,17 +90,18 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
     if (!await launchUrl(uri)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't open the dialer.")),
+          SnackBar(content: Text(l10n.couldNotOpenDialer)),
         );
       }
     }
   }
 
   Future<void> _whatsapp() async {
+    final l10n = AppLocalizations.of(context);
     final phone = _contact.phone?.trim();
     if (phone == null || phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No phone number saved for this party.')),
+        SnackBar(content: Text(l10n.noPhoneSaved)),
       );
       return;
     }
@@ -102,7 +113,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't open WhatsApp.")),
+          SnackBar(content: Text(l10n.couldNotOpenWhatsapp)),
         );
       }
     }
@@ -157,14 +168,17 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
   }
 
   Future<void> _deleteContact() async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete this $_partyLabel?'),
-        content: const Text('This can be recovered from support within the retention window.'),
+        title: Text(l10n.deletePartyTitle(_partyLabel(l10n))),
+        content: Text(l10n.deletePartyMessage),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.actionCancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true), child: Text(l10n.actionDelete)),
         ],
       ),
     );
@@ -178,6 +192,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
     // Entries auto-created from a Sales/Purchase bill (see
     // InvoiceRepository._syncKhataEntry) share their id with that Invoice -
     // route to the real invoice instead of the plain ledger row for those.
+    final l10n = AppLocalizations.of(context);
     final invoice = _invoicesById[e.id];
     final isInvoice = invoice != null;
 
@@ -189,17 +204,17 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.visibility_outlined),
-              title: Text(isInvoice ? 'View Invoice' : 'View Entry'),
+              title: Text(isInvoice ? l10n.viewInvoice : l10n.viewEntry),
               onTap: () => Navigator.pop(ctx, _EntryAction.view),
             ),
             ListTile(
               leading: const Icon(Icons.edit_outlined),
-              title: Text(isInvoice ? 'Edit Invoice' : 'Edit Entry'),
+              title: Text(isInvoice ? l10n.editInvoice : l10n.editEntry),
               onTap: () => Navigator.pop(ctx, _EntryAction.edit),
             ),
             ListTile(
               leading: const Icon(Icons.share_outlined),
-              title: Text(isInvoice ? 'Share Invoice' : 'Share Entry'),
+              title: Text(isInvoice ? l10n.shareInvoice : l10n.shareEntry),
               onTap: () => Navigator.pop(ctx, _EntryAction.share),
             ),
           ],
@@ -266,10 +281,13 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
         break;
       case _EntryAction.share:
         final isGave = e.type == KhataEntryType.youGave;
+        // Shared in the sender's app language, composed from the same keys
+        // the screen itself uses rather than a separate message template.
         final lines = [
           _contact.name,
-          '${isGave ? 'You Gave' : 'You Got'}: ${Money.format(e.amountPaise)}',
-          'Date: ${e.date.day}/${e.date.month}/${e.date.year}',
+          '${isGave ? l10n.khataYouGave : l10n.khataYouGot}: '
+              '${Money.format(e.amountPaise)}',
+          '${l10n.date}: ${e.date.day}/${e.date.month}/${e.date.year}',
           if (e.description != null && e.description!.trim().isNotEmpty) e.description!,
         ];
         await Share.share(lines.join('\n'));
@@ -279,17 +297,30 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final tones = context.tones;
     final writable = context.watch<BookProvider>().currentBookIsWritable;
     final balance = _balance;
+    final partyLabel = _partyLabel(l10n);
+
+    // Ported from fixed green/red shades to the theme's tones - the
+    // hardcoded shade50 backgrounds were near-white boxes in dark mode.
+    // The sign-to-tone mapping is deliberately left as it was: a positive
+    // balance reads positive whichever party type this is.
+    final balanceTone = balance == 0
+        ? tones.neutral
+        : (balance > 0 ? tones.positive : tones.negative);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_contact.name),
+        title: Text(_contact.name, overflow: TextOverflow.ellipsis),
         actions: [
-          IconButton(icon: const Icon(Icons.call), tooltip: 'Call', onPressed: _call),
+          IconButton(
+              icon: const Icon(Icons.call), tooltip: l10n.actionCall, onPressed: _call),
           IconButton(
             icon: const FaIcon(FontAwesomeIcons.whatsapp),
-            tooltip: 'WhatsApp',
+            tooltip: l10n.actionWhatsapp,
             onPressed: _whatsapp,
           ),
           PopupMenuButton<_PartyMenuAction>(
@@ -310,16 +341,22 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
               }
             },
             itemBuilder: (ctx) => [
-              PopupMenuItem(value: _PartyMenuAction.edit, child: Text('Edit $_partyLabel')),
-              const PopupMenuItem(
+              PopupMenuItem(
+                value: _PartyMenuAction.edit,
+                child: Text(l10n.editParty(partyLabel)),
+              ),
+              PopupMenuItem(
                 value: _PartyMenuAction.downloadPdf,
-                child: Text('Download Ledger PDF'),
+                child: Text(l10n.downloadLedgerPdf),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: _PartyMenuAction.createInvoice,
-                child: Text('Create Bill'),
+                child: Text(l10n.createBill),
               ),
-              PopupMenuItem(value: _PartyMenuAction.delete, child: Text('Delete $_partyLabel')),
+              PopupMenuItem(
+                value: _PartyMenuAction.delete,
+                child: Text(l10n.deleteParty(partyLabel)),
+              ),
             ],
           ),
         ],
@@ -328,29 +365,28 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
         children: [
           Container(
             width: double.infinity,
-            color: balance == 0
-                ? Colors.grey.shade100
-                : (balance > 0 ? Colors.green.shade50 : Colors.red.shade50),
-            padding: const EdgeInsets.all(16),
+            color: balanceTone.bg,
+            padding: const EdgeInsets.all(AppSpacing.lg),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   balance == 0
-                      ? 'Settled up'
+                      ? l10n.settledUp
                       : (balance > 0
-                          ? (_isCustomer ? "You'll get" : "You'll pay")
-                          : (_isCustomer ? "You'll pay" : "You'll get")),
-                  style: const TextStyle(color: Colors.grey),
+                          ? (_isCustomer ? l10n.youWillGet : l10n.youWillPay)
+                          : (_isCustomer ? l10n.youWillPay : l10n.youWillGet)),
+                  style: theme.textTheme.bodyMedium?.copyWith(color: tones.textSecondary),
                 ),
-                Text(
-                  Money.format(balance.abs()),
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: balance == 0
-                        ? Colors.grey.shade700
-                        : (balance > 0 ? Colors.green.shade700 : Colors.red.shade700),
+                // A settled-up lakh-scale balance is the widest thing on
+                // this screen; shrink it rather than clip it on a phone.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    Money.format(balance.abs()),
+                    style: theme.textTheme.headlineSmall
+                        ?.copyWith(color: balanceTone.fg, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
@@ -360,37 +396,61 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _entries.isEmpty
-                    ? const Center(child: Text('No transactions yet.'))
+                    ? Center(child: Text(l10n.noTransactionsTitle))
                     : ListView.builder(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
                         itemCount: _entries.length,
                         itemBuilder: (ctx, i) {
                           final e = _entries[i];
                           final isGave = e.type == KhataEntryType.youGave;
                           return ListTile(
-                            title: Text(e.description?.trim().isNotEmpty == true
-                                ? e.description!
-                                : (isGave ? 'You Gave' : 'You Got')),
+                            title: Text(
+                              e.description?.trim().isNotEmpty == true
+                                  ? e.description!
+                                  : (isGave ? l10n.khataYouGave : l10n.khataYouGot),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                             subtitle: Text(
                               '${e.date.day}/${e.date.month}/${e.date.year}'
                               '${e.attachments.isNotEmpty ? '  ·  📎' : ''}',
                             ),
-                            trailing: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  Money.format(e.amountPaise),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: isGave ? Colors.red.shade700 : Colors.green.shade700,
+                            // A ListTile gives `trailing` no width of its
+                            // own, so two lakh-scale amounts here used to
+                            // squeeze the title to a few characters on a
+                            // phone. Capped, and each line shrinks to fit
+                            // rather than being cut off.
+                            trailing: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 128),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerRight,
+                                    child: Text(
+                                      Money.format(e.amountPaise),
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        color: isGave
+                                            ? tones.negative.fg
+                                            : tones.positive.fg,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                                Text(
-                                  'Bal ${Money.format(_runningBalances[i].abs())}',
-                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                ),
-                              ],
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerRight,
+                                    child: Text(
+                                      l10n.balanceShort(
+                                          Money.format(_runningBalances[i].abs())),
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(color: tones.textTertiary),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                             onTap: () => _showEntryActions(e),
                           );
@@ -401,7 +461,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
             SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(AppSpacing.md),
                 child: Row(
                   children: [
                     Expanded(
@@ -412,10 +472,17 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                         onPressed: () => _addEntry(KhataEntryType.youGave),
-                        child: const Text('You Gave'),
+                        // Translations of these run longer than the English
+                        // ("ਤੁਹਾਨੂੰ ਮਿਲਣੇ ਹਨ"), and half a phone width is all
+                        // each button gets - shrink rather than wrap to two
+                        // lines and change the bar's height.
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(l10n.khataYouGave, maxLines: 1),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: AppSpacing.md),
                     Expanded(
                       child: FilledButton(
                         style: FilledButton.styleFrom(
@@ -423,7 +490,10 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                         onPressed: () => _addEntry(KhataEntryType.youGot),
-                        child: const Text('You Got'),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(l10n.khataYouGot, maxLines: 1),
+                        ),
                       ),
                     ),
                   ],

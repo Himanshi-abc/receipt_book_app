@@ -5,9 +5,11 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
+import '../../../core/design/app_spacing.dart';
 import '../../../core/models/contact_model.dart';
 import '../../../core/models/khata_entry_model.dart';
 import '../../../core/utils/money.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../books/providers/book_provider.dart';
 import '../services/khata_entry_repository.dart';
 
@@ -130,9 +132,9 @@ class _AddLedgerEntryScreenState extends State<AddLedgerEntryScreen> {
     );
   }
 
-  Widget _buildExistingAttachmentPreview() {
+  Widget _buildExistingAttachmentPreview(AppLocalizations l10n) {
     final existing = _keptExistingAttachments.first;
-    final name = existing.fileName ?? 'Attached file';
+    final name = existing.fileName ?? l10n.attachedFile;
 
     if (existing.isImageFile) {
       return Stack(
@@ -173,61 +175,91 @@ class _AddLedgerEntryScreenState extends State<AddLedgerEntryScreen> {
     );
   }
 
-  Widget _buildAttachmentField() {
+  Widget _buildAttachmentField(AppLocalizations l10n) {
     if (_pickedFile != null) return _buildPickedFilePreview();
-    if (_keptExistingAttachments.isNotEmpty) return _buildExistingAttachmentPreview();
+    if (_keptExistingAttachments.isNotEmpty) {
+      return _buildExistingAttachmentPreview(l10n);
+    }
     return OutlinedButton.icon(
       icon: const Icon(Icons.attach_file),
-      label: const Text('Attach File (optional)'),
+      label: Text(l10n.attachFileOptional),
       onPressed: _pickFile,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final baseTitle = _isYouGave ? 'You Gave' : 'You Got';
+    final l10n = AppLocalizations.of(context);
+    final title = _isEditing
+        ? (_isYouGave ? l10n.khataEditYouGave : l10n.khataEditYouGot)
+        : (_isYouGave ? l10n.khataYouGave : l10n.khataYouGot);
+
     return Scaffold(
-      appBar: AppBar(title: Text(_isEditing ? 'Edit $baseTitle' : baseTitle)),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(widget.contact.name, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _amountCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Amount (₹) *'),
-            onChanged: (_) => setState(() {}),
-            autofocus: !_isEditing,
+      appBar: AppBar(title: Text(title)),
+      // Centered and width-capped for the same reason AuthScaffold caps its
+      // card: this app also ships to Windows desktop, where a form of
+      // single-line fields stretched across a 1280dp window is unusable. On
+      // a phone the cap is never reached, so the layout is unchanged there.
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: ListView(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            children: [
+              Text(
+                widget.contact.name,
+                style: Theme.of(context).textTheme.titleMedium,
+                // Party names run long ("Shree Balaji Traders & Sons"), and
+                // at phone width an unbounded name pushed the amount field
+                // down the screen a line at a time.
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              TextField(
+                controller: _amountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: l10n.amountLabelRequired),
+                onChanged: (_) => setState(() {}),
+                autofocus: !_isEditing,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _descriptionCtrl,
+                decoration: InputDecoration(labelText: l10n.descriptionOptional),
+                maxLines: 2,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(l10n.date),
+                subtitle: Text('${_date.day}/${_date.month}/${_date.year}'),
+                trailing: const Icon(Icons.calendar_today),
+                onTap: _pickDate,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              _buildAttachmentField(l10n),
+              const SizedBox(height: AppSpacing.xxl),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor:
+                      _isYouGave ? Colors.red.shade700 : Colors.green.shade700,
+                  // A 40dp default is under the 48dp minimum touch target,
+                  // and this is the one button on the screen.
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                onPressed: (_canSave && !_saving) ? _save : null,
+                child: _saving
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(l10n.actionSave),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _descriptionCtrl,
-            decoration: const InputDecoration(labelText: 'Description (optional)'),
-            maxLines: 2,
-          ),
-          const SizedBox(height: 12),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Date'),
-            subtitle: Text('${_date.day}/${_date.month}/${_date.year}'),
-            trailing: const Icon(Icons.calendar_today),
-            onTap: _pickDate,
-          ),
-          const SizedBox(height: 12),
-          _buildAttachmentField(),
-          const SizedBox(height: 24),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: _isYouGave ? Colors.red.shade700 : Colors.green.shade700,
-            ),
-            onPressed: (_canSave && !_saving) ? _save : null,
-            child: _saving
-                ? const SizedBox(
-                    height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Save'),
-          ),
-        ],
+        ),
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:receipt_book/features/books/screens/business_profile_screen.dart';
+import 'package:receipt_book/l10n/app_localizations_en.dart';
 
 /// The logo/signature upload's Storage error messaging.
 ///
@@ -17,11 +18,17 @@ import 'package:receipt_book/features/books/screens/business_profile_screen.dart
 /// signature are broken" purely because this is the one screen that says
 /// anything. These tests pin the message that's supposed to point at that.
 void main() {
+  // The message is localized now, so it needs an AppLocalizations. English
+  // is instantiated directly rather than pumped through a widget - these
+  // assertions are about the English copy this file has always pinned.
+  final l10n = AppLocalizationsEn();
+
   group('businessProfileStorageErrorMessage', () {
     for (final code in ['unauthorized', 'unauthenticated', 'object-not-found', 'unknown']) {
       test('code "$code" is treated as a project-wide Storage problem, not '
           'a per-file one, and points at the Blaze plan requirement', () {
         final message = businessProfileStorageErrorMessage(
+          l10n,
           FirebaseException(plugin: 'firebase_storage', code: code),
           isSignature: false,
         );
@@ -33,10 +40,12 @@ void main() {
 
     test('names the logo vs the signature correctly', () {
       final logoMsg = businessProfileStorageErrorMessage(
+        l10n,
         FirebaseException(plugin: 'firebase_storage', code: 'unauthorized'),
         isSignature: false,
       );
       final signatureMsg = businessProfileStorageErrorMessage(
+        l10n,
         FirebaseException(plugin: 'firebase_storage', code: 'unauthorized'),
         isSignature: true,
       );
@@ -49,6 +58,7 @@ void main() {
     test('an unrelated code falls back to the raw Firebase detail, not a '
         'billing guess', () {
       final message = businessProfileStorageErrorMessage(
+        l10n,
         FirebaseException(
           plugin: 'firebase_storage',
           code: 'canceled',
@@ -64,6 +74,7 @@ void main() {
 
     test('a missing message still produces readable text', () {
       final message = businessProfileStorageErrorMessage(
+        l10n,
         FirebaseException(plugin: 'firebase_storage', code: 'canceled'),
         isSignature: false,
       );

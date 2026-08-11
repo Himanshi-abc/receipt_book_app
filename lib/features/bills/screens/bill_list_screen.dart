@@ -14,8 +14,28 @@ import '../../../core/widgets/money_text.dart';
 import '../../books/providers/book_provider.dart';
 import '../../invoices/services/invoice_repository.dart';
 import '../../invoices/screens/invoice_preview_share_screen.dart';
+import '../../../l10n/app_localizations.dart';
 import '../models/bill_date_range.dart';
 import 'create_bill_screen.dart';
+
+/// The translated label for a bill date-range preset.
+///
+/// [BillDateRange.label] stays English-only on purpose: it's a pure model
+/// with no BuildContext to resolve a locale from. Custom ranges keep
+/// delegating to it, since that branch is a formatted date pair rather
+/// than a fixed phrase - and intl already renders those month names in the
+/// active locale.
+String billRangeLabel(AppLocalizations l10n, BillDateRange range) =>
+    switch (range.preset) {
+      BillDateRangePreset.thisMonth => l10n.rangeThisMonth,
+      BillDateRangePreset.lastMonth => l10n.rangeLastMonth,
+      BillDateRangePreset.thisWeek => l10n.rangeThisWeek,
+      BillDateRangePreset.lastWeek => l10n.rangeLastWeek,
+      BillDateRangePreset.thisYear => l10n.rangeThisYear,
+      BillDateRangePreset.lastYear => l10n.rangeLastYear,
+      BillDateRangePreset.allTime => l10n.rangeAllTime,
+      BillDateRangePreset.custom => range.label,
+    };
 
 /// Business Book only, standalone route (kept for any direct/deep-link
 /// navigation to '/bills') - [BillsSectionBody] is what actually renders
@@ -40,7 +60,7 @@ class BillListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Bills')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).billsTitle)),
       body: BillsSectionBody(
         initialDirection: initialDirection,
         initialStatusFilter: initialStatusFilter,
@@ -58,13 +78,16 @@ class BillListScreen extends StatelessWidget {
 /// [BillListScreen]'s initial-state params.
 enum BillStatusFilter { all, paid, pending, overdue }
 
-/// Sales vs Purchase bills, split by a toggle at the top - with a party
-/// name search, a status filter (All/Paid/Pending/Overdue), a date-range filter
-/// (This Month/Last Month/This Week/Last Week/This Year/Last Year/Custom),
-/// and Total/Pending summary cards scoped to the same range - all modeled
-/// after a billing app like Swipe. Returns its own Scaffold (body + FAB
-/// only, no AppBar) so it can be embedded directly under someone else's
-/// AppBar - see HomeLedgerScreen and [BillListScreen] above.
+/// Sales vs Purchase bills, split by a full-width toggle at the top (Sales
+/// selected by default) - with a party name search, a Status filter
+/// (Paid/Pending/Overdue, checkbox multi-select) and a Date filter (This
+/// Month/Last Month/This Week/Last Week/This Year/Last Year/All Time/
+/// Custom) tucked behind a filter icon left of the search bar - same
+/// position and sheet style as the Register section's filter - and Total/
+/// Pending summary cards scoped to the same range. Returns its own
+/// Scaffold (body + FAB only, no AppBar) so it can be embedded directly
+/// under someone else's AppBar - see HomeLedgerScreen and [BillListScreen]
+/// above.
 class BillsSectionBody extends StatefulWidget {
   /// Starting state. All three stay fully editable afterwards - these only
   /// decide what the user lands on. See [BillListScreen].
@@ -86,98 +109,220 @@ class BillsSectionBody extends StatefulWidget {
 class _BillsSectionBodyState extends State<BillsSectionBody> {
   late BillDirection _direction = widget.initialDirection;
   final _searchCtrl = TextEditingController();
-  late BillStatusFilter _statusFilter = widget.initialStatusFilter;
+
+  /// Status multi-select: empty means "every status" - same convention as
+  /// the Register section's Category filter. [BillStatusFilter.all] is
+  /// never itself a set member; it only exists as the external
+  /// [initialStatusFilter] API for deep-links (e.g. the dashboard's Overdue
+  /// cards land here with `{overdue}` preselected).
+  late Set<BillStatusFilter> _statusFilters = widget.initialStatusFilter == BillStatusFilter.all
+      ? {}
+      : {widget.initialStatusFilter};
+
   late BillDateRange _range = BillDateRange.forPreset(widget.initialRangePreset);
 
   bool get _isSales => _direction == BillDirection.sales;
 
-  Future<void> _pickCustomRange() async {
-    final now = DateTime.now();
-    // Bills can be dated up to five years back and, via the bill form's own
-    // date picker, into the future - so the filter has to reach both ways
-    // or it can't select ranges that contain real bills.
-    final picked = await AppDateRangeDialog.show(
-      context,
-      initialStart: _range.start,
-      initialEnd: _range.end,
-      firstDate: DateTime(now.year - 5),
-      lastDate: DateTime(now.year + 5, 12, 31),
-      title: 'Custom date range',
-    );
-    if (picked != null) {
-      setState(() {
-        _range = BillDateRange.forPreset(
-          BillDateRangePreset.custom,
-          customStart: picked.start,
-          // End-of-day: a bill dated on the last day of the range must fall
-          // inside it, and BillDateRange.contains compares raw DateTimes.
-          customEnd: DateTime(
-              picked.end.year, picked.end.month, picked.end.day, 23, 59, 59),
-        );
-      });
-    }
-  }
+  /// Whether the filter sheet's own facets (status/date) have anything
+  /// active - drives the badge dot on the filter icon. Date always has
+  /// *some* preset (there's no "off" state for it, unlike Register's
+  /// Date), so it only counts as "active" once it's off the default.
+  bool get _hasActiveFilters =>
+      _statusFilters.isNotEmpty || _range.preset != BillDateRangePreset.thisMonth;
 
-  /// A single dropdown (top-right, next to the Sales/Purchase toggle)
-  /// rather than a row of chips - "This Month" by default, every other
-  /// preset (plus Custom) tucked inside the dropdown.
-  Widget _buildDateRangeDropdown() {
-    // A DropdownButton sizes itself to its widest item, and the custom
-    // range's label is far wider than any preset's - without a cap it eats
-    // the space the Sales/Purchase toggle needs on a narrow phone.
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 168),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<BillDateRangePreset>(
-          value: _range.preset,
-          isExpanded: true, // lets the label ellipsize instead of overflowing
-          icon: const Icon(Icons.arrow_drop_down),
-          selectedItemBuilder: (context) => BillDateRangePreset.values
-              .map((p) => Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      _range.label,
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                  ))
-              .toList(),
-          items: BillDateRangePreset.values
-              .map((p) => DropdownMenuItem(
-                    value: p,
-                    // Every other preset's label describes a fixed period,
-                    // but Custom's label is whatever range happens to be
-                    // stored - which rendered this menu entry as a
-                    // meaningless pair of dates. In the list it has to name
-                    // the action instead; the chosen range shows on the
-                    // closed button, via selectedItemBuilder above.
-                    child: p == BillDateRangePreset.custom
-                        ? const Text('Custom range…')
-                        : Text(BillDateRange.forPreset(p).label),
-                  ))
-              .toList(),
-          onChanged: (preset) {
-            if (preset == null) return;
-            if (preset == BillDateRangePreset.custom) {
-              // Reopens the dialog even when Custom is already selected -
-              // DropdownButton fires onChanged on every tap, not only on a
-              // change, which is what makes the range editable afterwards.
-              _pickCustomRange();
-            } else {
-              setState(() => _range = BillDateRange.forPreset(preset));
-            }
-          },
+  static String _statusLabel(AppLocalizations l10n, BillStatusFilter f) =>
+      switch (f) {
+        BillStatusFilter.all => l10n.typeAll,
+        BillStatusFilter.paid => l10n.paid,
+        BillStatusFilter.pending => l10n.pending,
+        BillStatusFilter.overdue => l10n.overdue,
+      };
+
+  /// The filter icon button, leftmost next to the search field - same spot
+  /// and look as the Register section's. Opens [_openFilterSheet] with
+  /// Status (Paid/Pending/Overdue) and Date; Sales/Purchase stays out of
+  /// the sheet entirely since it's the always-visible toggle above.
+  Widget _buildFilterButton(BuildContext context, {required int overdueCount}) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    final active = _hasActiveFilters;
+    return Badge(
+      isLabelVisible: active,
+      smallSize: 8,
+      backgroundColor: theme.colorScheme.primary,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: active ? theme.colorScheme.primary : theme.dividerColor,
+          ),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        child: IconButton(
+          icon: Icon(
+            Icons.filter_list,
+            color: active ? theme.colorScheme.primary : null,
+          ),
+          tooltip: l10n.filters,
+          onPressed: () => _openFilterSheet(context, overdueCount: overdueCount),
         ),
       ),
     );
   }
 
-  Widget _statusChip(String label, BillStatusFilter filter) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: _statusFilter == filter,
-      onSelected: (_) => setState(() => _statusFilter = filter),
+  /// Bottom sheet holding Status (checkbox multi-select - a bill matching
+  /// *any* checked status passes) and Date (checkbox-styled but
+  /// single-select, since only one period can apply at once - checking one
+  /// clears whichever was checked before; Custom immediately opens the
+  /// range picker, same as the old dropdown did). Selections are held
+  /// locally until "Apply filters" so cancelling discards changes.
+  Future<void> _openFilterSheet(BuildContext context, {required int overdueCount}) async {
+    var tempStatuses = Set<BillStatusFilter>.of(_statusFilters);
+    var tempRange = _range;
+
+    final result = await showModalBottomSheet<
+        ({Set<BillStatusFilter> statuses, BillDateRange range})>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+      ),
+      builder: (ctx) {
+        final l10n = AppLocalizations.of(ctx);
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            Future<void> pickCustom() async {
+              final now = DateTime.now();
+              // Bills can be dated up to five years back and, via the bill
+              // form's own date picker, into the future - so the filter has
+              // to reach both ways or it can't select ranges that contain
+              // real bills.
+              final picked = await AppDateRangeDialog.show(
+                ctx,
+                initialStart: tempRange.start,
+                initialEnd: tempRange.end,
+                firstDate: DateTime(now.year - 5),
+                lastDate: DateTime(now.year + 5, 12, 31),
+                title: l10n.customDateRangeTitle,
+              );
+              if (picked != null) {
+                setSheetState(() {
+                  tempRange = BillDateRange.forPreset(
+                    BillDateRangePreset.custom,
+                    customStart: picked.start,
+                    // End-of-day: a bill dated on the last day of the range
+                    // must fall inside it, and BillDateRange.contains
+                    // compares raw DateTimes.
+                    customEnd: DateTime(
+                        picked.end.year, picked.end.month, picked.end.day, 23, 59, 59),
+                  );
+                });
+              }
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: AppSpacing.lg,
+                  right: AppSpacing.lg,
+                  top: AppSpacing.lg,
+                  bottom: AppSpacing.lg + MediaQuery.of(ctx).viewInsets.bottom,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(l10n.filters, style: Theme.of(ctx).textTheme.titleLarge),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () => setSheetState(() {
+                              tempStatuses = {};
+                              tempRange = BillDateRange.forPreset(BillDateRangePreset.thisMonth);
+                            }),
+                            child: Text(l10n.actionClearAll),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Text(l10n.status, style: Theme.of(ctx).textTheme.titleSmall),
+                      for (final f in [
+                        BillStatusFilter.paid,
+                        BillStatusFilter.pending,
+                        BillStatusFilter.overdue,
+                      ])
+                        CheckboxListTile(
+                          value: tempStatuses.contains(f),
+                          title: Text(_statusLabel(l10n, f)),
+                          subtitle: f == BillStatusFilter.overdue && overdueCount > 0
+                              ? Text(l10n.billsCount(overdueCount))
+                              : null,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          onChanged: (checked) => setSheetState(() {
+                            if (checked == true) {
+                              tempStatuses.add(f);
+                            } else {
+                              tempStatuses.remove(f);
+                            }
+                          }),
+                        ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Text(l10n.date, style: Theme.of(ctx).textTheme.titleSmall),
+                      for (final p in BillDateRangePreset.values)
+                        CheckboxListTile(
+                          value: tempRange.preset == p,
+                          title: Text(
+                            p == BillDateRangePreset.custom
+                                ? (tempRange.preset == BillDateRangePreset.custom
+                                    ? tempRange.label
+                                    : l10n.customRange)
+                                : billRangeLabel(l10n, BillDateRange.forPreset(p)),
+                          ),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          onChanged: (checked) {
+                            if (checked != true) {
+                              setSheetState(() => tempRange =
+                                  BillDateRange.forPreset(BillDateRangePreset.thisMonth));
+                              return;
+                            }
+                            if (p == BillDateRangePreset.custom) {
+                              pickCustom();
+                            } else {
+                              setSheetState(() => tempRange = BillDateRange.forPreset(p));
+                            }
+                          },
+                        ),
+                      const SizedBox(height: AppSpacing.xxl),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(
+                            ctx,
+                            (statuses: tempStatuses, range: tempRange),
+                          ),
+                          child: Text(l10n.actionApplyFilters),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
+
+    if (result == null || !mounted) return;
+    setState(() {
+      _statusFilters = result.statuses;
+      _range = result.range;
+    });
   }
 
   Widget _buildSummaryCard(String label, int paise, AppTone tone, IconData icon) {
@@ -194,6 +339,7 @@ class _BillsSectionBodyState extends State<BillsSectionBody> {
   @override
   Widget build(BuildContext context) {
     final bookProvider = context.watch<BookProvider>();
+    final l10n = AppLocalizations.of(context);
     final book = bookProvider.currentBook;
     if (book == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -207,21 +353,20 @@ class _BillsSectionBodyState extends State<BillsSectionBody> {
               children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: SegmentedButton<BillDirection>(
-                          segments: const [
-                            ButtonSegment(value: BillDirection.sales, label: Text('Sales')),
-                            ButtonSegment(value: BillDirection.purchase, label: Text('Purchase')),
-                          ],
-                          selected: {_direction},
-                          onSelectionChanged: (s) => setState(() => _direction = s.first),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _buildDateRangeDropdown(),
+                  child: SegmentedButton<BillDirection>(
+                    segments: [
+                      ButtonSegment(
+                          value: BillDirection.sales, label: Text(l10n.sales)),
+                      ButtonSegment(
+                          value: BillDirection.purchase, label: Text(l10n.purchase)),
                     ],
+                    selected: {_direction},
+                    onSelectionChanged: (s) => setState(() => _direction = s.first),
+                    // Full width, not sized to its own content - Sales and
+                    // Purchase should each take half the screen, not sit
+                    // squeezed in the middle sharing the row with anything
+                    // else (the Date filter moved into the filter sheet).
+                    expandedInsets: EdgeInsets.zero,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -253,16 +398,30 @@ class _BillsSectionBodyState extends State<BillsSectionBody> {
                       final overdueBills =
                           pendingBills.where((i) => i.isOverdue(now)).toList();
 
-                      final statusFiltered = switch (_statusFilter) {
-                        BillStatusFilter.all => inRange,
-                        BillStatusFilter.paid =>
-                          inRange.where((i) => i.status == InvoiceStatus.paid).toList(),
-                        BillStatusFilter.pending => pendingBills,
-                        // Soonest-overdue last: when you're chasing payments
-                        // the most delinquent bill is the one you want first.
-                        BillStatusFilter.overdue => overdueBills
-                          ..sort((a, b) => a.effectiveDueDate.compareTo(b.effectiveDueDate)),
-                      };
+                      // A bill matching *any* checked status passes - empty
+                      // set means every status. Order follows inRange
+                      // (chronological) except when Overdue is the only
+                      // thing checked, matching the old single-select
+                      // behaviour: soonest-overdue last, since that's the
+                      // one you're chasing hardest.
+                      final statusFiltered = _statusFilters.isEmpty
+                          ? inRange
+                          : inRange
+                              .where((i) =>
+                                  (_statusFilters.contains(BillStatusFilter.paid) &&
+                                      i.status == InvoiceStatus.paid) ||
+                                  (_statusFilters.contains(BillStatusFilter.pending) &&
+                                      i.status != InvoiceStatus.paid) ||
+                                  (_statusFilters.contains(BillStatusFilter.overdue) &&
+                                      i.status != InvoiceStatus.paid &&
+                                      i.isOverdue(now)))
+                              .toList();
+                      final overdueOnly = _statusFilters.length == 1 &&
+                          _statusFilters.single == BillStatusFilter.overdue;
+                      if (overdueOnly) {
+                        statusFiltered
+                            .sort((a, b) => a.effectiveDueDate.compareTo(b.effectiveDueDate));
+                      }
 
                       final query = _searchCtrl.text.trim().toLowerCase();
                       final bills = query.isEmpty
@@ -278,7 +437,7 @@ class _BillsSectionBodyState extends State<BillsSectionBody> {
                             child: Row(
                               children: [
                                 _buildSummaryCard(
-                                  _isSales ? 'Total Sales' : 'Total Purchase',
+                                  _isSales ? l10n.totalSales : l10n.totalPurchase,
                                   totalAmountPaise,
                                   AppTone.info,
                                   _isSales
@@ -287,7 +446,7 @@ class _BillsSectionBodyState extends State<BillsSectionBody> {
                                 ),
                                 const SizedBox(width: AppSpacing.md),
                                 _buildSummaryCard(
-                                  _isSales ? 'Pending to Collect' : 'Pending to Pay',
+                                  _isSales ? l10n.pendingToCollect : l10n.pendingToPay,
                                   pendingAmountPaise,
                                   _isSales ? AppTone.positive : AppTone.negative,
                                   _isSales ? Icons.call_received : Icons.call_made,
@@ -299,63 +458,75 @@ class _BillsSectionBodyState extends State<BillsSectionBody> {
                           Padding(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: AppSpacing.pageGutter),
-                            child: AppSearchField(
-                              controller: _searchCtrl,
-                              hintText: _isSales
-                                  ? 'Search by customer name'
-                                  : 'Search by supplier name',
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            // Wrap, not Row: a fourth chip overflows a narrow
-                            // phone, and a clipped filter is an invisible one.
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _statusChip('All', BillStatusFilter.all),
-                                _statusChip('Paid', BillStatusFilter.paid),
-                                _statusChip('Pending', BillStatusFilter.pending),
-                                // Count in the label because "is anything
-                                // late?" is worth answering without a tap.
-                                _statusChip(
-                                  overdueBills.isEmpty
-                                      ? 'Overdue'
-                                      : 'Overdue (${overdueBills.length})',
-                                  BillStatusFilter.overdue,
+                                _buildFilterButton(context, overdueCount: overdueBills.length),
+                                const SizedBox(width: AppSpacing.sm),
+                                Expanded(
+                                  child: AppSearchField(
+                                    controller: _searchCtrl,
+                                    hintText: _isSales
+                                        ? l10n.searchCustomerHint
+                                        : l10n.searchSupplierHint,
+                                    onChanged: (_) => setState(() {}),
+                                  ),
                                 ),
                               ],
                             ),
                           ),
+                          if (_statusFilters.isNotEmpty ||
+                              _range.preset != BillDateRangePreset.thisMonth)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                  left: AppSpacing.pageGutter,
+                                  right: AppSpacing.pageGutter,
+                                  top: AppSpacing.xs),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Wrap(
+                                  spacing: AppSpacing.sm,
+                                  runSpacing: AppSpacing.xs,
+                                  children: [
+                                    for (final f in _statusFilters)
+                                      Chip(
+                                        label: Text(_statusLabel(l10n, f)),
+                                        onDeleted: () => setState(() {
+                                          _statusFilters = Set.of(_statusFilters)..remove(f);
+                                        }),
+                                      ),
+                                    if (_range.preset != BillDateRangePreset.thisMonth)
+                                      Chip(
+                                        label: Text(billRangeLabel(l10n, _range)),
+                                        onDeleted: () => setState(() => _range =
+                                            BillDateRange.forPreset(
+                                                BillDateRangePreset.thisMonth)),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           const SizedBox(height: 4),
                           Expanded(
                             child: bills.isEmpty
                                 // An empty Overdue list is good news, not a
                                 // failed search - saying "try widening the
                                 // filters" would read as if something's wrong.
-                                ? _statusFilter == BillStatusFilter.overdue &&
-                                        _searchCtrl.text.trim().isEmpty
+                                ? overdueOnly && _searchCtrl.text.trim().isEmpty
                                     ? AppEmptyState(
                                         icon: Icons.check_circle_outline,
-                                        title: 'Nothing overdue',
+                                        title: l10n.nothingOverdueTitle,
                                         message: _isSales
-                                            ? 'Every sales bill in this date range is '
-                                                'within its due date.'
-                                            : 'Every purchase bill in this date range is '
-                                                'within its due date.',
+                                            ? l10n.nothingOverdueSalesMessage
+                                            : l10n.nothingOverduePurchaseMessage,
                                         tone: AppTone.positive,
                                       )
                                     : AppEmptyState(
                                         icon: Icons.receipt_long_outlined,
                                         title: _isSales
-                                            ? 'No sales bills found'
-                                            : 'No purchase bills found',
-                                        message:
-                                            'Nothing matches the current date range, status '
-                                            'and search. Try widening one of them.',
+                                            ? l10n.noSalesBillsFound
+                                            : l10n.noPurchaseBillsFound,
+                                        message: l10n.noBillsMatchMessage,
                                       )
                                 : ListView.separated(
                                     padding: const EdgeInsets.fromLTRB(
@@ -387,7 +558,7 @@ class _BillsSectionBodyState extends State<BillsSectionBody> {
       floatingActionButton: access.writable
           ? FloatingActionButton.extended(
               icon: const Icon(Icons.add),
-              label: Text(_isSales ? 'New Sale' : 'New Purchase'),
+              label: Text(_isSales ? l10n.newSale : l10n.newPurchase),
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -402,37 +573,41 @@ class _BillsSectionBodyState extends State<BillsSectionBody> {
   Future<void> _showBillActions(BuildContext context, Book book, Invoice bill) async {
     final action = await showModalBottomSheet<String>(
       context: context,
-      builder: (ctx) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.visibility_outlined),
-              title: const Text('View Invoice'),
-              onTap: () => Navigator.pop(ctx, 'view'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('Edit Invoice'),
-              onTap: () => Navigator.pop(ctx, 'edit'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.share_outlined),
-              title: const Text('Share Invoice'),
-              onTap: () => Navigator.pop(ctx, 'share'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.print_outlined),
-              title: const Text('Print Invoice'),
-              onTap: () => Navigator.pop(ctx, 'print'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: const Text('Delete Invoice', style: TextStyle(color: Colors.red)),
-              onTap: () => Navigator.pop(ctx, 'delete'),
-            ),
-          ],
-        ),
-      ),
+      builder: (ctx) {
+        final l10n = AppLocalizations.of(ctx);
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.visibility_outlined),
+                title: Text(l10n.viewInvoice),
+                onTap: () => Navigator.pop(ctx, 'view'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: Text(l10n.editInvoice),
+                onTap: () => Navigator.pop(ctx, 'edit'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.share_outlined),
+                title: Text(l10n.shareInvoice),
+                onTap: () => Navigator.pop(ctx, 'share'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.print_outlined),
+                title: Text(l10n.printInvoice),
+                onTap: () => Navigator.pop(ctx, 'print'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                title: Text(l10n.deleteInvoice,
+                    style: const TextStyle(color: Colors.red)),
+                onTap: () => Navigator.pop(ctx, 'delete'),
+              ),
+            ],
+          ),
+        );
+      },
     );
     if (!context.mounted || action == null) return;
 
@@ -488,40 +663,47 @@ class _BillsSectionBodyState extends State<BillsSectionBody> {
   Future<void> _confirmAndDelete(BuildContext context, Invoice bill) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Invoice'),
-        content: Text(
-            'Delete ${bill.invoiceNumber}? This cannot be undone. Any linked income/expense entry will be kept and must be removed separately from the ledger if needed.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      builder: (ctx) {
+        final l10n = AppLocalizations.of(ctx);
+        return AlertDialog(
+          title: Text(l10n.deleteInvoice),
+          content: Text(l10n.deleteInvoiceConfirm(bill.invoiceNumber)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l10n.actionCancel),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l10n.actionDelete),
+            ),
+          ],
+        );
+      },
     );
     if (confirmed != true) return;
 
     await InvoiceRepository().deleteInvoice(bill.id);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${bill.invoiceNumber} deleted.')),
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context).invoiceDeleted(bill.invoiceNumber),
+          ),
+        ),
       );
     }
   }
 
   Widget _buildLockedState(BookAccessResult access) {
+    final l10n = AppLocalizations.of(context);
     return AppEmptyState(
       icon: Icons.lock_outline,
-      title: 'This book is locked',
-      message: BookAccessService.messageFor(access.reason),
+      title: l10n.bookLockedTitle,
+      message: BookAccessService.messageFor(l10n, access.reason),
       tone: AppTone.warning,
-      actionLabel: 'Switch Active Book / Upgrade',
+      actionLabel: l10n.switchBookOrUpgrade,
       onAction: () => Navigator.pushNamed(context, '/settings/manage-books'),
     );
   }
@@ -539,17 +721,22 @@ class BillRow extends StatelessWidget {
 
   const BillRow({super.key, required this.bill, required this.onTap});
 
-  static ({String label, AppTone tone}) _status(InvoiceStatus s) => switch (s) {
-        InvoiceStatus.paid => (label: 'Paid', tone: AppTone.positive),
-        InvoiceStatus.partial => (label: 'Part paid', tone: AppTone.warning),
-        InvoiceStatus.unpaid => (label: 'Unpaid', tone: AppTone.negative),
+  static ({String label, AppTone tone}) _status(
+          AppLocalizations l10n, InvoiceStatus s) =>
+      switch (s) {
+        InvoiceStatus.paid => (label: l10n.paid, tone: AppTone.positive),
+        InvoiceStatus.partial =>
+          (label: l10n.statusPartPaid, tone: AppTone.warning),
+        InvoiceStatus.unpaid =>
+          (label: l10n.statusUnpaid, tone: AppTone.negative),
       };
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tones = context.tones;
-    final status = _status(bill.status);
+    final l10n = AppLocalizations.of(context);
+    final status = _status(l10n, bill.status);
     final statusTone = tones.byTone(status.tone);
     final date = bill.invoiceDate;
 
@@ -609,9 +796,9 @@ class BillRow extends StatelessWidget {
                     if (showDue) ...[
                       const SizedBox(height: AppSpacing.xxs),
                       Text(
-                        'Due ${due.day.toString().padLeft(2, '0')}/'
-                        '${due.month.toString().padLeft(2, '0')}/${due.year}'
-                        '${daysLeft < 0 ? '  ·  Overdue' : ''}',
+                        l10n.dueOn('${due.day.toString().padLeft(2, '0')}/'
+                                '${due.month.toString().padLeft(2, '0')}/${due.year}') +
+                            (daysLeft < 0 ? '  ·  ${l10n.overdue}' : ''),
                         style: theme.textTheme.bodySmall
                             ?.copyWith(color: dueColor)
                             .tabular,

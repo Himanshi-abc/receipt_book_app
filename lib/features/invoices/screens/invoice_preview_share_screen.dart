@@ -9,6 +9,8 @@ import '../../../core/models/book_model.dart';
 import '../../../core/models/invoice_model.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/widgets/money_text.dart';
+import '../../../l10n/app_localizations.dart';
+import '../../bills/screens/create_bill_screen.dart' show paymentModeLabel;
 import '../services/invoice_pdf_service.dart';
 import '../services/invoice_repository.dart';
 
@@ -103,15 +105,23 @@ class _InvoicePreviewShareScreenState extends State<InvoicePreviewShareScreen> {
         break;
     }
     if (mounted && status == InvoiceStatus.paid) {
-      final kind = _invoice.billDirection == BillDirection.purchase ? 'expense' : 'income';
+      final l10n = AppLocalizations.of(context);
+      // Two whole sentences rather than one with an "income"/"expense"
+      // placeholder - the noun takes different case marking in several of
+      // the supported languages.
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Marked Paid — matching $kind transaction created.')),
+        SnackBar(
+          content: Text(_invoice.billDirection == BillDirection.purchase
+              ? l10n.markedPaidExpenseCreated
+              : l10n.markedPaidIncomeCreated),
+        ),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(_invoice.invoiceNumber),
@@ -119,10 +129,11 @@ class _InvoicePreviewShareScreenState extends State<InvoicePreviewShareScreen> {
           PopupMenuButton<InvoiceStatus>(
             icon: const Icon(Icons.more_vert),
             onSelected: _setStatus,
-            itemBuilder: (ctx) => const [
-              PopupMenuItem(value: InvoiceStatus.paid, child: Text('Mark Paid')),
-              PopupMenuItem(value: InvoiceStatus.partial, child: Text('Mark Partially Paid')),
-              PopupMenuItem(value: InvoiceStatus.unpaid, child: Text('Mark Unpaid')),
+            itemBuilder: (ctx) => [
+              PopupMenuItem(value: InvoiceStatus.paid, child: Text(l10n.markPaid)),
+              PopupMenuItem(
+                  value: InvoiceStatus.partial, child: Text(l10n.markPartiallyPaid)),
+              PopupMenuItem(value: InvoiceStatus.unpaid, child: Text(l10n.markUnpaid)),
             ],
           ),
         ],
@@ -155,11 +166,13 @@ class _InvoicePreviewShareScreenState extends State<InvoicePreviewShareScreen> {
 
   Widget _buildStatusBanner() {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final (tone, label, icon) = switch (_invoice.status) {
-      InvoiceStatus.paid => (AppTone.positive, 'Paid', Icons.check_circle_outline),
+      InvoiceStatus.paid => (AppTone.positive, l10n.paid, Icons.check_circle_outline),
       InvoiceStatus.partial =>
-        (AppTone.warning, 'Partially Paid', Icons.schedule),
-      InvoiceStatus.unpaid => (AppTone.negative, 'Unpaid', Icons.error_outline),
+        (AppTone.warning, l10n.statusPartPaid, Icons.schedule),
+      InvoiceStatus.unpaid =>
+        (AppTone.negative, l10n.statusUnpaid, Icons.error_outline),
     };
     final toneColors = context.tones.byTone(tone);
 
@@ -203,9 +216,9 @@ class _InvoicePreviewShareScreenState extends State<InvoicePreviewShareScreen> {
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.xs),
               child: Text(
-                'Received ${Money.format(_invoice.amountReceivedPaise)}'
-                '${_invoice.paymentMode != null ? ' via ${_invoice.paymentMode}' : ''}'
-                '  ·  Balance ${Money.format(_invoice.balanceDuePaise)}',
+                '${_invoice.paymentMode == null ? l10n.receivedAmount(Money.format(_invoice.amountReceivedPaise)) : l10n.receivedAmountViaMode(Money.format(_invoice.amountReceivedPaise), paymentModeLabel(l10n, _invoice.paymentMode!))}'
+                '  ·  '
+                '${l10n.balanceAmount(Money.format(_invoice.balanceDuePaise))}',
                 style: theme.textTheme.labelSmall
                     ?.copyWith(color: toneColors.fg)
                     .tabular,

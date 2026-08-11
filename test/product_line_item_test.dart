@@ -6,6 +6,7 @@ import 'package:receipt_book/core/models/invoice_model.dart';
 import 'package:receipt_book/core/models/product_model.dart';
 import 'package:receipt_book/core/utils/tax_math.dart';
 import 'package:receipt_book/features/bills/screens/product_line_item_screen.dart';
+import 'package:receipt_book/l10n/app_localizations.dart';
 
 /// The screen shown between picking a product and adding it to a bill.
 void main() {
@@ -50,6 +51,9 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        
         theme: AppTheme.light(),
         home: Scaffold(
           body: Builder(

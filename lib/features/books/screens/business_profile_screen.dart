@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import '../../../core/models/book_model.dart';
+import '../../../l10n/app_localizations.dart';
 import '../providers/book_provider.dart';
 import 'add_business_book_screen.dart' show kIndianStates;
 
@@ -26,19 +27,25 @@ import 'add_business_book_screen.dart' show kIndianStates;
 /// A free function, not a method, so this logic can be tested without a
 /// widget around it - see [_BusinessProfileScreenState._pickAndUploadImage],
 /// its only caller.
+/// Logo and signature get their own message keys rather than one message
+/// with a "logo"/"signature" placeholder: several of the supported Indian
+/// languages inflect the surrounding verb and case marking to agree with
+/// that noun, which a substituted word cannot do.
 String businessProfileStorageErrorMessage(
+  AppLocalizations l10n,
   FirebaseException e, {
   required bool isSignature,
 }) {
-  final what = isSignature ? 'signature' : 'logo';
   const billingLikelyCodes = {'unauthorized', 'unauthenticated', 'object-not-found', 'unknown'};
   if (billingLikelyCodes.contains(e.code)) {
-    return "Couldn't upload the $what - Cloud Storage isn't reachable "
-        '(${e.code}). If this project is still on Firebase\'s free Spark '
-        'plan, Storage requires the Blaze plan as of Feb 2026 - check '
-        'Firebase Console > Project Settings > Usage and billing.';
+    return isSignature
+        ? l10n.signatureUploadStorageUnreachable(e.code)
+        : l10n.logoUploadStorageUnreachable(e.code);
   }
-  return "Couldn't upload the $what: ${e.code} - ${e.message ?? 'no further detail from Firebase.'}";
+  final detail = e.message ?? l10n.noFurtherDetailFromFirebase;
+  return isSignature
+      ? l10n.signatureUploadFailed(e.code, detail)
+      : l10n.logoUploadFailed(e.code, detail);
 }
 
 /// Full Business Profile for the current Business Book - reached from
@@ -124,6 +131,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   }
 
   Future<void> _pickAndUploadImage({required bool isSignature}) async {
+    final l10n = AppLocalizations.of(context);
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -132,12 +140,12 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('Take Photo'),
+              title: Text(l10n.takePhoto),
               onTap: () => Navigator.pop(ctx, ImageSource.camera),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Choose from Gallery'),
+              title: Text(l10n.chooseFromGallery),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery),
             ),
           ],
@@ -183,14 +191,17 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       // into something a non-technical user (and future-us) can act on.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(businessProfileStorageErrorMessage(e, isSignature: isSignature)),
+          content: Text(
+              businessProfileStorageErrorMessage(l10n, e, isSignature: isSignature)),
           duration: const Duration(seconds: 10),
         ));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Could not upload ${isSignature ? 'signature' : 'logo'}: $e'),
+          content: Text(isSignature
+              ? l10n.signatureUploadFailedGeneric('$e')
+              : l10n.logoUploadFailedGeneric('$e')),
           duration: const Duration(seconds: 6),
         ));
       }
@@ -249,8 +260,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     });
 
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Business profile saved')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppLocalizations.of(context).businessProfileSaved)),
+      );
       Navigator.of(context).pop();
     }
   }
@@ -316,12 +328,14 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                 children: [
                   OutlinedButton(
                     onPressed: uploading ? null : onPick,
-                    child: Text(url == null ? 'Upload' : 'Change'),
+                    child: Text(url == null
+                        ? AppLocalizations.of(context).actionUpload
+                        : AppLocalizations.of(context).actionChange),
                   ),
                   if (url != null)
                     TextButton(
                       onPressed: uploading ? null : onRemove,
-                      child: const Text('Remove'),
+                      child: Text(AppLocalizations.of(context).actionRemove),
                     ),
                 ],
               ),
@@ -334,31 +348,33 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Business Profile')),
+      appBar: AppBar(title: Text(l10n.businessProfile)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _sectionCard(
-            title: 'Business Details',
+            title: l10n.businessDetails,
             children: [
               TextField(
                 controller: _nameCtrl,
-                decoration: const InputDecoration(labelText: 'Business/Company Name *'),
+                decoration:
+                    InputDecoration(labelText: l10n.businessCompanyNameRequired),
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _gstinCtrl,
-                decoration: const InputDecoration(labelText: 'GST Number (optional)'),
+                decoration: InputDecoration(labelText: l10n.gstNumberOptional),
                 textCapitalization: TextCapitalization.characters,
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _phoneCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Business Phone Number *',
-                  prefixIcon: Icon(Icons.call_outlined),
+                decoration: InputDecoration(
+                  labelText: l10n.businessPhoneRequired,
+                  prefixIcon: const Icon(Icons.call_outlined),
                 ),
                 keyboardType: TextInputType.phone,
                 onChanged: (_) => setState(() {}),
@@ -366,16 +382,16 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             ],
           ),
           _sectionCard(
-            title: 'Branding',
-            subtitle: 'Shown on your invoices and other customer-facing documents.',
+            title: l10n.branding,
+            subtitle: l10n.brandingSubtitle,
             children: [
               TextField(
                 controller: _brandNameCtrl,
-                decoration: const InputDecoration(labelText: 'Brand Name (optional)'),
+                decoration: InputDecoration(labelText: l10n.brandNameOptional),
               ),
               const SizedBox(height: 16),
               _buildImagePicker(
-                label: 'Brand Logo (optional)',
+                label: l10n.brandLogoOptional,
                 url: _logoUrl,
                 uploading: _uploadingLogo,
                 onPick: () => _pickAndUploadImage(isSignature: false),
@@ -384,87 +400,87 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             ],
           ),
           _sectionCard(
-            title: 'Billing Address',
+            title: l10n.billingAddress,
             children: [
               DropdownButtonFormField<String>(
                 initialValue: _state,
-                decoration: const InputDecoration(labelText: 'State *'),
+                decoration: InputDecoration(labelText: l10n.stateRequired),
                 items: kIndianStates.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
                 onChanged: (v) => setState(() => _state = v),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _addressCtrl,
-                decoration: const InputDecoration(labelText: 'Billing Address *'),
+                decoration: InputDecoration(labelText: l10n.billingAddressRequired),
                 maxLines: 3,
                 onChanged: (_) => setState(() {}),
               ),
             ],
           ),
           _sectionCard(
-            title: 'Shipping Address',
-            subtitle: 'Optional - shown on invoices only if different from billing.',
+            title: l10n.shippingAddress,
+            subtitle: l10n.shippingAddressSubtitle,
             children: [
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _shippingSameAsBilling,
-                title: const Text('Same as billing address'),
+                title: Text(l10n.sameAsBillingAddress),
                 onChanged: (v) => setState(() => _shippingSameAsBilling = v ?? true),
               ),
               if (!_shippingSameAsBilling)
                 TextField(
                   controller: _shippingAddressCtrl,
-                  decoration: const InputDecoration(labelText: 'Shipping Address'),
+                  decoration: InputDecoration(labelText: l10n.shippingAddress),
                   maxLines: 3,
                 ),
             ],
           ),
           _sectionCard(
-            title: 'Online Presence',
+            title: l10n.onlinePresence,
             children: [
               TextField(
                 controller: _websiteCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Website (optional)',
-                  prefixIcon: Icon(Icons.language_outlined),
+                decoration: InputDecoration(
+                  labelText: l10n.websiteOptional,
+                  prefixIcon: const Icon(Icons.language_outlined),
                 ),
                 keyboardType: TextInputType.url,
               ),
             ],
           ),
           _sectionCard(
-            title: 'Bank Account Details',
-            subtitle: 'Optional - shown on invoices so customers can pay you directly.',
+            title: l10n.bankAccountDetails,
+            subtitle: l10n.bankAccountDetailsSubtitle,
             children: [
               TextField(
                 controller: _bankHolderCtrl,
-                decoration: const InputDecoration(labelText: 'Account Holder Name'),
+                decoration: InputDecoration(labelText: l10n.accountHolderName),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _bankNameCtrl,
-                decoration: const InputDecoration(labelText: 'Bank Name'),
+                decoration: InputDecoration(labelText: l10n.bankName),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _bankAccountCtrl,
-                decoration: const InputDecoration(labelText: 'Account Number'),
+                decoration: InputDecoration(labelText: l10n.accountNumber),
                 keyboardType: TextInputType.number,
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _ifscCtrl,
-                decoration: const InputDecoration(labelText: 'IFSC Code'),
+                decoration: InputDecoration(labelText: l10n.ifscCode),
                 textCapitalization: TextCapitalization.characters,
               ),
             ],
           ),
           _sectionCard(
-            title: 'Signature',
-            subtitle: 'Optional - appears on invoices as an authorized signatory mark.',
+            title: l10n.signature,
+            subtitle: l10n.signatureSubtitle,
             children: [
               _buildImagePicker(
-                label: 'Signature Image',
+                label: l10n.signatureImage,
                 url: _signatureUrl,
                 uploading: _uploadingSignature,
                 onPick: () => _pickAndUploadImage(isSignature: true),
@@ -482,7 +498,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                     width: 18,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
-                : const Text('Save Business Profile'),
+                : Text(l10n.saveBusinessProfile),
           ),
           const SizedBox(height: 24),
         ],

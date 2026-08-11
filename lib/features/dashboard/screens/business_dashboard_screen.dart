@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../core/design/app_breakpoints.dart';
+import '../../../core/design/app_colors.dart';
+import '../../../core/design/app_spacing.dart';
 import '../../../core/models/book_model.dart';
+import '../../../core/models/contact_model.dart';
 import '../../../core/models/invoice_model.dart';
 import '../../../core/navigation/business_section.dart';
 import '../../../core/services/transaction_repository.dart';
@@ -11,6 +15,7 @@ import '../../bills/screens/bill_list_screen.dart';
 import '../../bills/screens/due_bills_screen.dart';
 import '../../books/providers/book_provider.dart';
 import '../../invoices/services/invoice_repository.dart';
+import '../../../l10n/app_localizations.dart';
 import '../models/dashboard_date_range.dart';
 import '../models/dashboard_data.dart';
 import '../services/dashboard_service.dart';
@@ -57,10 +62,12 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
     final all = await _repo.loadTransactions(book.id);
     final invoices = await _invoiceRepo.watchInvoices(book.id).first;
 
+    if (!mounted) return;
     final data = DashboardService.compute(
       allTransactions: all,
       range: _range,
       invoices: invoices,
+      l10n: AppLocalizations.of(context),
     );
     if (mounted) {
       setState(() {
@@ -88,7 +95,7 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
       initialEnd: _range.end,
       firstDate: DateTime(now.year - 5),
       lastDate: now,
-      title: 'Custom date range',
+      title: AppLocalizations.of(context).customDateRangeTitle,
     );
     if (picked != null) {
       setState(() {
@@ -152,6 +159,7 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final bookProvider = context.watch<BookProvider>();
+    final l10n = AppLocalizations.of(context);
     final book = bookProvider.currentBook;
 
     if (book == null) {
@@ -161,7 +169,9 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
     final access = bookProvider.accessFor(book);
 
     return Scaffold(
-      appBar: widget.embedded ? null : AppBar(title: Text('${book.name} · Dashboard')),
+      appBar: widget.embedded
+          ? null
+          : AppBar(title: Text(l10n.dashboardTitle(book.name))),
       body: !access.writable
           ? _buildLockedState(context, access)
           : _loading
@@ -180,12 +190,12 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
                       ),
                       const SizedBox(height: 20),
                       _sectionCard(
-                        title: 'Income vs Expense Trend',
+                        title: l10n.trendChartTitle,
                         child: TrendChart(points: _data!.trend),
                       ),
                       const SizedBox(height: 16),
                       _sectionCard(
-                        title: 'Expense Breakdown by Category',
+                        title: l10n.expenseBreakdownTitle,
                         child: ExpenseCategoryBreakdown(slices: _data!.expenseByCategory),
                       ),
                       const SizedBox(height: 16),
@@ -195,21 +205,50 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
                         totalPendingToSuppliersPaise: _data!.totalPendingToSuppliersPaise,
                         pendingSupplierBillsCount: _data!.pendingSupplierBillsCount,
                         businessCashflowPaise: _data!.businessCashflowPaise,
-                        // Money owed by customers lives in Customers;
-                        // money owed to suppliers lives in Suppliers.
+                        // Money owed by customers and money owed to
+                        // suppliers both live in the merged Parties section
+                        // now - partyType picks which sub-tab it opens on.
                         // Inside the shell these switch section in place;
                         // standalone they still push the route.
                         onTapOutstanding: () => BusinessShellScope.goTo(
                           context,
-                          BusinessSection.customers,
+                          BusinessSection.parties,
+                          partyType: ContactType.customer,
                           fallbackRoute: '/customers',
                           onReturn: () => mounted ? _load() : null,
                         ),
                         onTapPendingToSuppliers: () => BusinessShellScope.goTo(
                           context,
-                          BusinessSection.suppliers,
+                          BusinessSection.parties,
+                          partyType: ContactType.vendor,
                           fallbackRoute: '/suppliers',
                           onReturn: () => mounted ? _load() : null,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // The two "who/what is driving the business" lists sit
+                      // directly under the till-date totals, so the period
+                      // story (numbers -> trend -> breakdown -> totals ->
+                      // who & what) reads top to bottom uninterrupted. The
+                      // due/overdue alert cards follow as their own block
+                      // below, rather than splitting that story in half.
+                      _sectionCard(
+                        title: l10n.topCustomersVendorsTitle,
+                        child: _twoUp(
+                          TopContactsList(
+                              title: l10n.topCustomers, contacts: _data!.topCustomers),
+                          TopContactsList(
+                              title: l10n.topVendors, contacts: _data!.topVendors),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _sectionCard(
+                        title: l10n.fastSlowProductsTitle,
+                        child: _twoUp(
+                          TopProductsList(
+                              title: l10n.fastMoving, products: _data!.fastMovingProducts),
+                          TopProductsList(
+                              title: l10n.slowMoving, products: _data!.slowMovingProducts),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -231,42 +270,6 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
                         onTapPurchase: () => _openOverdueBills(BillDirection.purchase),
                         onTapSales: () => _openOverdueBills(BillDirection.sales),
                       ),
-                      const SizedBox(height: 16),
-                      _sectionCard(
-                        title: 'Top Customers & Vendors',
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: TopContactsList(
-                                  title: 'Top Customers', contacts: _data!.topCustomers),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: TopContactsList(
-                                  title: 'Top Vendors', contacts: _data!.topVendors),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _sectionCard(
-                        title: 'Fast Moving & Slow Moving Products',
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: TopProductsList(
-                                  title: 'Fast Moving', products: _data!.fastMovingProducts),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: TopProductsList(
-                                  title: 'Slow Moving', products: _data!.slowMovingProducts),
-                            ),
-                          ],
-                        ),
-                      ),
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -274,34 +277,64 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
     );
   }
 
+  /// Two peer panels side-by-side on wide screens, stacked on a phone where
+  /// two Expanded columns would squeeze each other's text to an unreadable
+  /// width.
+  Widget _twoUp(Widget a, Widget b) {
+    if (context.isCompact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [a, const SizedBox(height: AppSpacing.lg), b],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: a),
+        const SizedBox(width: AppSpacing.lg),
+        Expanded(child: b),
+      ],
+    );
+  }
+
   Widget _buildRangeSelector() {
+    final l10n = AppLocalizations.of(context);
+    final chips = [
+      ChoiceChip(
+        label: Text(l10n.rangeThisMonth),
+        selected: _range.preset == DateRangePreset.thisMonth,
+        onSelected: (_) => _setPreset(DateRangePreset.thisMonth),
+      ),
+      ChoiceChip(
+        label: Text(l10n.rangeLastMonth),
+        selected: _range.preset == DateRangePreset.lastMonth,
+        onSelected: (_) => _setPreset(DateRangePreset.lastMonth),
+      ),
+      ChoiceChip(
+        label: Text(l10n.rangeThisFinancialYear),
+        selected: _range.preset == DateRangePreset.thisFinancialYear,
+        onSelected: (_) => _setPreset(DateRangePreset.thisFinancialYear),
+      ),
+      ActionChip(
+        avatar: const Icon(Icons.date_range, size: 16),
+        label: Text(
+            _range.preset == DateRangePreset.custom ? _range.label : l10n.rangeCustom),
+        onPressed: _pickCustomRange,
+      ),
+    ];
+
+    // Always one horizontally-scrollable line, on phone and desktop alike -
+    // wrapping to a second line on a phone pushed the summary cards further
+    // down and made the filter row's height jump depending on which preset
+    // was selected (the Custom chip's label is longer than the others).
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          ChoiceChip(
-            label: const Text('This Month'),
-            selected: _range.preset == DateRangePreset.thisMonth,
-            onSelected: (_) => _setPreset(DateRangePreset.thisMonth),
-          ),
-          const SizedBox(width: 8),
-          ChoiceChip(
-            label: const Text('Last Month'),
-            selected: _range.preset == DateRangePreset.lastMonth,
-            onSelected: (_) => _setPreset(DateRangePreset.lastMonth),
-          ),
-          const SizedBox(width: 8),
-          ChoiceChip(
-            label: const Text('This Financial Year'),
-            selected: _range.preset == DateRangePreset.thisFinancialYear,
-            onSelected: (_) => _setPreset(DateRangePreset.thisFinancialYear),
-          ),
-          const SizedBox(width: 8),
-          ActionChip(
-            avatar: const Icon(Icons.date_range, size: 16),
-            label: Text(_range.preset == DateRangePreset.custom ? _range.label : 'Custom'),
-            onPressed: _pickCustomRange,
-          ),
+          for (var i = 0; i < chips.length; i++) ...[
+            if (i > 0) const SizedBox(width: AppSpacing.sm),
+            chips[i],
+          ],
         ],
       ),
     );
@@ -310,12 +343,12 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
   Widget _sectionCard({required String title, required Widget child}) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            const SizedBox(height: 12),
+            Text(title, style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: AppSpacing.md),
             child,
           ],
         ),
@@ -326,20 +359,21 @@ class _BusinessDashboardScreenState extends State<BusinessDashboardScreen> {
   Widget _buildLockedState(BuildContext context, BookAccessResult access) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(AppSpacing.xxxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.lock_outline, size: 48, color: Colors.grey),
-            const SizedBox(height: 16),
+            Icon(Icons.lock_outline, size: 48, color: context.tones.textTertiary),
+            const SizedBox(height: AppSpacing.lg),
             Text(
-              BookAccessService.messageFor(access.reason),
+              BookAccessService.messageFor(
+                  AppLocalizations.of(context), access.reason),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             FilledButton(
               onPressed: () => Navigator.pushNamed(context, '/settings/manage-books'),
-              child: const Text('Switch Active Book / Upgrade'),
+              child: Text(AppLocalizations.of(context).switchBookOrUpgrade),
             ),
           ],
         ),

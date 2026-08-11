@@ -5,6 +5,7 @@ import 'package:receipt_book/core/design/app_theme.dart';
 import 'package:receipt_book/features/settings/models/support_content.dart';
 import 'package:receipt_book/features/settings/screens/faq_screen.dart';
 import 'package:receipt_book/features/settings/screens/legal_document_screen.dart';
+import 'package:receipt_book/l10n/app_localizations.dart';
 
 /// Help & Support and About Us content, and the two screens that render it.
 void main() {
@@ -24,7 +25,7 @@ void main() {
     });
 
     test('every legal document has a title, a date and non-empty sections', () {
-      for (final doc in [kAboutReceiptBook, kPrivacyPolicy, kTermsAndConditions]) {
+      for (final doc in [kAboutDhandho, kPrivacyPolicy, kTermsAndConditions]) {
         expect(doc.title.trim(), isNotEmpty);
         expect(doc.lastUpdated.trim(), isNotEmpty);
         expect(doc.sections, isNotEmpty, reason: doc.title);
@@ -56,7 +57,10 @@ void main() {
     });
   });
 
-  Widget host(Widget child) => MaterialApp(theme: AppTheme.light(), home: child);
+  Widget host(Widget child) => MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: AppTheme.light(), home: child);
 
   group('FaqScreen', () {
     testWidgets('lists categories and expands an answer on tap', (tester) async {
@@ -64,12 +68,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('GETTING STARTED'), findsOneWidget);
-      expect(find.text('What is ReceiptBook?'), findsOneWidget);
+      expect(find.text('What is Dhandho?'), findsOneWidget);
 
       // Collapsed to begin with.
       expect(find.textContaining('record-keeping app'), findsNothing);
 
-      await tester.tap(find.text('What is ReceiptBook?'));
+      await tester.tap(find.text('What is Dhandho?'));
       await tester.pumpAndSettle();
       expect(find.textContaining('record-keeping app'), findsOneWidget);
     });
@@ -87,7 +91,7 @@ void main() {
         find.text('Why does my invoice show CGST and SGST instead of IGST?'),
         findsOneWidget,
       );
-      expect(find.text('What is ReceiptBook?'), findsNothing);
+      expect(find.text('What is Dhandho?'), findsNothing);
     });
 
     testWidgets('shows an empty state when nothing matches', (tester) async {
@@ -123,7 +127,7 @@ void main() {
 
     testWidgets('all three documents render without layout errors',
         (tester) async {
-      for (final doc in [kAboutReceiptBook, kPrivacyPolicy, kTermsAndConditions]) {
+      for (final doc in [kAboutDhandho, kPrivacyPolicy, kTermsAndConditions]) {
         await tester.pumpWidget(host(LegalDocumentScreen(document: doc)));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: doc.title);

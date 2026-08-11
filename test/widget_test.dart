@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:receipt_book/l10n/app_localizations.dart';
 
 import 'package:receipt_book/core/design/app_colors.dart';
 import 'package:receipt_book/core/design/app_theme.dart';
@@ -25,6 +26,8 @@ void main() {
   /// the original failure on the Dashboard.
   Widget hostInListView(Widget child) {
     return MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: AppTheme.light(),
       home: Scaffold(
         body: ListView(padding: const EdgeInsets.all(16), children: [child]),
@@ -35,6 +38,8 @@ void main() {
   /// Same, but inside a Column - the Customers/Suppliers screen's shape.
   Widget hostInColumn(Widget child) {
     return MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: AppTheme.light(),
       home: Scaffold(
         body: Column(
@@ -96,7 +101,8 @@ void main() {
       expect(find.text('Business Cashflow'), findsOneWidget);
     });
 
-    testWidgets('lays out on a narrow viewport (2 + 1 wrap)', (tester) async {
+    testWidgets('lays out on a narrow (phone-width) viewport as stacked full-width cards',
+        (tester) async {
       tester.view.physicalSize = const Size(360, 1400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -104,6 +110,8 @@ void main() {
       await tester.pumpWidget(hostInListView(cards));
 
       expect(tester.takeException(), isNull);
+      expect(find.text('Total Outstanding'), findsOneWidget);
+      expect(find.text('Total Unpaid Bills'), findsOneWidget);
       expect(find.text('Business Cashflow'), findsOneWidget);
     });
   });

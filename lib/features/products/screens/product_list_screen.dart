@@ -9,6 +9,7 @@ import '../../../core/services/book_access_service.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_search_field.dart';
 import '../../../core/widgets/money_text.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../books/providers/book_provider.dart';
 import '../services/product_pdf_service.dart';
 import '../services/product_repository.dart';
@@ -65,9 +66,10 @@ class ProductListScreenState extends State<ProductListScreen> {
   }
 
   Future<void> downloadProductsPdf() async {
+    final l10n = AppLocalizations.of(context);
     if (_all.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add a product first.')),
+        SnackBar(content: Text(l10n.addAProductFirst)),
       );
       return;
     }
@@ -82,12 +84,12 @@ class ProductListScreenState extends State<ProductListScreen> {
       // null means the user cancelled the save dialog - not an error.
       if (path != null && mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('PDF saved.')));
+            .showSnackBar(SnackBar(content: Text(l10n.pdfSaved)));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Could not save PDF: $e')));
+            .showSnackBar(SnackBar(content: Text(l10n.couldNotSavePdf('$e'))));
       }
     }
   }
@@ -100,16 +102,17 @@ class ProductListScreenState extends State<ProductListScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final access = bookProvider.accessFor(book);
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: widget.embedded
           ? null
           : AppBar(
-              title: const Text('Products'),
+              title: Text(l10n.navProducts),
               actions: [
                 IconButton(
                   icon: const Icon(Icons.picture_as_pdf_outlined),
-                  tooltip: 'Download product list (PDF)',
+                  tooltip: l10n.downloadProductListPdf,
                   onPressed: downloadProductsPdf,
                 ),
               ],
@@ -123,7 +126,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                       horizontal: AppSpacing.pageGutter, vertical: AppSpacing.md),
                   child: AppSearchField(
                     controller: _searchCtrl,
-                    hintText: 'Search products by name or code',
+                    hintText: l10n.searchProductsHint,
                     onChanged: (_) => setState(_applyFilter),
                   ),
                 ),
@@ -134,11 +137,9 @@ class ProductListScreenState extends State<ProductListScreen> {
                           ? (_all.isEmpty
                               ? AppEmptyState(
                                   icon: Icons.inventory_2_outlined,
-                                  title: 'No products yet',
-                                  message:
-                                      'Add the products or services you sell so you can '
-                                      'drop them straight into a bill.',
-                                  actionLabel: 'Add product',
+                                  title: l10n.noProductsYet,
+                                  message: l10n.noProductsYetMessage,
+                                  actionLabel: l10n.addProduct,
                                   onAction: () async {
                                     await Navigator.push(
                                       context,
@@ -148,11 +149,10 @@ class ProductListScreenState extends State<ProductListScreen> {
                                     _load();
                                   },
                                 )
-                              : const AppEmptyState(
+                              : AppEmptyState(
                                   icon: Icons.search_off,
-                                  title: 'No matches',
-                                  message:
-                                      'No product matches that name or code.',
+                                  title: l10n.noMatches,
+                                  message: l10n.noProductMatchesSearch,
                                 ))
                           : RefreshIndicator(
                               onRefresh: _load,
@@ -165,7 +165,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                                 ),
                                 itemCount: _filtered.length,
                                 separatorBuilder: (_, __) =>
-                                    const SizedBox(height: AppSpacing.sm),
+                                    const SizedBox(height: AppSpacing.xs),
                                 itemBuilder: (ctx, i) {
                                   final p = _filtered[i];
                                   return _ProductRow(
@@ -202,20 +202,27 @@ class ProductListScreenState extends State<ProductListScreen> {
   }
 
   Widget _buildLockedState(BookAccessResult access) {
+    final l10n = AppLocalizations.of(context);
     return AppEmptyState(
       icon: Icons.lock_outline,
-      title: 'This book is locked',
-      message: BookAccessService.messageFor(access.reason),
+      title: l10n.bookLockedTitle,
+      message: BookAccessService.messageFor(l10n, access.reason),
       tone: AppTone.warning,
-      actionLabel: 'Switch Active Book / Upgrade',
+      actionLabel: l10n.switchBookOrUpgrade,
       onAction: () => Navigator.pushNamed(context, '/settings/manage-books'),
     );
   }
 }
 
-/// One product/service row.
+/// One product/service row: code badge, name, price - nothing else.
 ///
-/// The product code moves into a monospaced-feel badge rather than a
+/// Deliberately a single line. The "Product"/"Service" label used to sit
+/// under the name, which forced a two-line row for a distinction that is
+/// the same on nearly every entry and that the edit screen states plainly
+/// anyway. Dropping it lets the row collapse to one line, so more of the
+/// catalogue fits on screen at once - which is what this list is for.
+///
+/// The product code sits in a monospaced-feel badge rather than a
 /// `CircleAvatar`: codes run to 2-3 digits and were being clipped inside a
 /// 32px circle, and a squircle badge reads as an identifier rather than as
 /// a person.
@@ -229,64 +236,51 @@ class _ProductRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tones = context.tones;
-    final isProduct = product.type == ProductItemType.product;
 
     return Material(
       color: tones.surface,
-      borderRadius: BorderRadius.circular(AppRadius.lg),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadius.lg),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(color: tones.border),
           ),
           padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.md,
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
           ),
           child: Row(
             children: [
               Container(
-                constraints: const BoxConstraints(minWidth: 40),
-                height: 40,
+                constraints: const BoxConstraints(minWidth: 34),
+                height: 30,
                 alignment: Alignment.center,
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                 decoration: BoxDecoration(
                   color: tones.neutral.bg,
-                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                   border: Border.all(color: tones.neutral.border),
                 ),
                 child: Text(
                   product.productCode?.toString() ?? '—',
-                  style: theme.textTheme.labelMedium
+                  style: theme.textTheme.labelSmall
                       ?.copyWith(color: tones.textSecondary)
                       .tabular,
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      product.name,
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: AppSpacing.xxs),
-                    Text(
-                      isProduct ? 'Product' : 'Service',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: tones.textTertiary),
-                    ),
-                  ],
+                child: Text(
+                  product.name,
+                  style: theme.textTheme.titleSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: AppSpacing.md),
+              const SizedBox(width: AppSpacing.sm),
               MoneyText(
                 product.sellingPricePaise,
                 muted: true,

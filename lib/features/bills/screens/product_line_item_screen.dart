@@ -7,6 +7,7 @@ import '../../../core/models/invoice_model.dart';
 import '../../../core/models/product_model.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/utils/tax_math.dart';
+import '../../../l10n/app_localizations.dart';
 
 /// Sits between picking a product and adding it to a bill.
 ///
@@ -158,9 +159,10 @@ class _ProductLineItemScreenState extends State<ProductLineItemScreen> {
     final theme = Theme.of(context);
     final tones = context.tones;
     final line = _buildLine();
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Item')),
+      appBar: AppBar(title: Text(l10n.addItem)),
       body: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
@@ -171,22 +173,22 @@ class _ProductLineItemScreenState extends State<ProductLineItemScreen> {
               _productHeader(theme, tones),
               const SizedBox(height: AppSpacing.xl),
 
-              Text('Price per unit', style: theme.textTheme.titleSmall),
+              Text(l10n.pricePerUnit, style: theme.textTheme.titleSmall),
               const SizedBox(height: AppSpacing.xxs),
               Text(
                 _taxRate == 0
-                    ? 'This item is not taxed, so both prices are the same.'
-                    : 'Edit either one - the other updates automatically.',
+                    ? l10n.itemNotTaxedHint
+                    : l10n.editEitherPriceHint,
                 style: theme.textTheme.bodySmall?.copyWith(color: tones.textTertiary),
               ),
               const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: _exclusiveCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'Price without tax (₹)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.sell_outlined),
+                decoration: InputDecoration(
+                  labelText: l10n.priceWithoutTax,
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.sell_outlined),
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -194,18 +196,20 @@ class _ProductLineItemScreenState extends State<ProductLineItemScreen> {
                 controller: _inclusiveCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
-                  labelText: 'Price with tax (₹)',
+                  labelText: l10n.priceWithTax,
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.receipt_outlined),
                   helperText: _taxRate == 0
                       ? null
-                      : 'Includes ${_trimRate(_taxRate)}% tax '
-                          '(${Money.format(_inclusiveUnitPaise - _exclusivePaise)})',
+                      : l10n.includesTaxAmount(
+                          _trimRate(_taxRate),
+                          Money.format(_inclusiveUnitPaise - _exclusivePaise),
+                        ),
                 ),
               ),
               const SizedBox(height: AppSpacing.xl),
 
-              Text('Quantity', style: theme.textTheme.titleSmall),
+              Text(l10n.quantity, style: theme.textTheme.titleSmall),
               const SizedBox(height: AppSpacing.sm),
               _quantityRow(),
               const SizedBox(height: AppSpacing.xl),
@@ -216,12 +220,12 @@ class _ProductLineItemScreenState extends State<ProductLineItemScreen> {
               FilledButton(
                 onPressed: _canSave ? () => Navigator.pop(context, line) : null,
                 style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                child: const Text('Add to Bill'),
+                child: Text(l10n.addToBill),
               ),
               const SizedBox(height: AppSpacing.sm),
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
+                child: Text(l10n.actionCancel),
               ),
             ],
           ),
@@ -236,15 +240,16 @@ class _ProductLineItemScreenState extends State<ProductLineItemScreen> {
 
   Widget _productHeader(ThemeData theme, AppSemanticColors tones) {
     final product = widget.product;
+    final l10n = AppLocalizations.of(context);
     final details = [
-      if (product.productCode != null) 'Code ${product.productCode}',
+      if (product.productCode != null) l10n.codeWithValue('${product.productCode}'),
       if (product.hsnCode != null && product.hsnCode!.trim().isNotEmpty)
-        'HSN ${product.hsnCode}',
+        l10n.hsnWithValue(product.hsnCode!),
       if (product.unit != null && product.unit!.trim().isNotEmpty) product.unit!,
       // Shown, not chosen: the rate is fixed to whatever this product was
       // saved with (Products > Edit), so it's stated here as a fact about
       // the item rather than offered as another decision on this screen.
-      _taxRate == 0 ? 'No tax' : '${_trimRate(_taxRate)}% tax',
+      _taxRate == 0 ? l10n.noTax : l10n.taxRatePercent(_trimRate(_taxRate)),
     ].join('  ·  ');
 
     return Row(
@@ -285,12 +290,13 @@ class _ProductLineItemScreenState extends State<ProductLineItemScreen> {
   }
 
   Widget _quantityRow() {
+    final l10n = AppLocalizations.of(context);
     return Row(
       children: [
         IconButton.outlined(
           onPressed: _qty > 1 ? () => _bumpQty(-1) : null,
           icon: const Icon(Icons.remove),
-          tooltip: 'Decrease',
+          tooltip: l10n.decrease,
         ),
         const SizedBox(width: AppSpacing.md),
         Expanded(
@@ -310,13 +316,14 @@ class _ProductLineItemScreenState extends State<ProductLineItemScreen> {
         IconButton.outlined(
           onPressed: () => _bumpQty(1),
           icon: const Icon(Icons.add),
-          tooltip: 'Increase',
+          tooltip: l10n.increase,
         ),
       ],
     );
   }
 
   Widget _totalCard(ThemeData theme, AppSemanticColors tones, InvoiceLineItem line) {
+    final l10n = AppLocalizations.of(context);
     final brand = tones.byTone(AppTone.brand);
 
     Widget row(String label, String value, {bool strong = false}) => Padding(
@@ -349,11 +356,12 @@ class _ProductLineItemScreenState extends State<ProductLineItemScreen> {
       ),
       child: Column(
         children: [
-          row('Taxable value', Money.format(line.taxableAmountPaise)),
+          row(l10n.taxableValue, Money.format(line.taxableAmountPaise)),
           if (_taxRate > 0)
-            row('Tax (${_trimRate(_taxRate)}%)', Money.format(line.taxAmountPaise)),
+            row(l10n.taxWithRate(_trimRate(_taxRate)),
+                Money.format(line.taxAmountPaise)),
           const Divider(height: AppSpacing.lg),
-          row('Item total', Money.format(line.totalAmountPaise), strong: true),
+          row(l10n.itemTotal, Money.format(line.totalAmountPaise), strong: true),
         ],
       ),
     );

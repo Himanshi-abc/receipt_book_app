@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../models/transaction_model.dart';
 import '../widgets/full_screen_image_viewer.dart';
 
@@ -77,7 +78,9 @@ class AttachmentFileService {
     }
     if (!opened && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't open this file. Try Share instead.")),
+        SnackBar(
+          content: Text(AppLocalizations.of(context).couldNotOpenFile),
+        ),
       );
     }
   }

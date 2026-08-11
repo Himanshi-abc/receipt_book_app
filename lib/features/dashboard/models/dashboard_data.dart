@@ -57,15 +57,21 @@ class DashboardData {
   final int totalPendingToSuppliersPaise; // unpaid/partial Purchase bills - owed BY the business
   final int pendingSupplierBillsCount;
 
-  /// Also "till date", same as the pair above: total money actually
-  /// received against Sales invoices and actually paid against Purchase
-  /// bills (Invoice.amountReceivedPaise, summed regardless of paid/partial/
-  /// unpaid status - it's real cash movement, not what's still owed).
+  /// Also "till date", same as the pair above: real cash movement, not
+  /// what's still owed - each side sums two sources. Received = money
+  /// actually received against Sales invoices (Invoice.amountReceivedPaise,
+  /// summed regardless of paid/partial/unpaid status) + every Income entry
+  /// logged in the Register/Ledger. Paid = money actually paid against
+  /// Purchase bills + every Expense entry in the Register/Ledger (its
+  /// business-use share only, same rule as [totalExpensePaise]). A cash
+  /// sale/expense that was never turned into an invoice/bill only shows up
+  /// through its Register entry, which is exactly why that side has to be
+  /// counted too - see DashboardService.compute.
   final int totalReceivedFromCustomersPaise;
   final int totalPaidToSuppliersPaise;
 
   /// "Business Cashflow": what actually moved, not what's owed. Positive
-  /// means more cash came in from customers than went out to suppliers.
+  /// means more cash came in than went out.
   int get businessCashflowPaise => totalReceivedFromCustomersPaise - totalPaidToSuppliersPaise;
 
   /// Bills falling due within the next [upcomingDueWindowDays] days - i.e.

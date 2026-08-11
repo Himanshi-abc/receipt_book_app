@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/app_localizations.dart';
+
 /// Compact, one-row representation of a receipt attachment: a file-type
 /// icon (never a rendered inline preview), the file name, and up to four
 /// actions (View/Share/Delete/Download). Used on both the transaction entry
@@ -26,6 +28,7 @@ class AttachmentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Card(
       margin: EdgeInsets.zero,
       child: ListTile(
@@ -36,25 +39,25 @@ class AttachmentCard extends StatelessWidget {
           children: [
             if (onView != null)
               IconButton(
-                tooltip: 'View',
+                tooltip: l10n.actionView,
                 icon: const Icon(Icons.visibility_outlined),
                 onPressed: onView,
               ),
             if (onShare != null)
               IconButton(
-                tooltip: 'Share',
+                tooltip: l10n.actionShare,
                 icon: const Icon(Icons.share_outlined),
                 onPressed: onShare,
               ),
             if (onDelete != null)
               IconButton(
-                tooltip: 'Delete',
+                tooltip: l10n.actionDelete,
                 icon: const Icon(Icons.delete_outline),
                 onPressed: onDelete,
               ),
             if (onDownload != null)
               IconButton(
-                tooltip: 'Download',
+                tooltip: l10n.actionDownload,
                 icon: const Icon(Icons.download_outlined),
                 onPressed: onDownload,
               ),

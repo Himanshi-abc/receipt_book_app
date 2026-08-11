@@ -6,6 +6,7 @@ import '../../../core/design/app_colors.dart';
 import '../../../core/design/app_motion.dart';
 import '../../../core/design/app_spacing.dart';
 import '../../../core/models/invoice_template.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../books/providers/book_provider.dart';
 import 'invoice_template_preview_screen.dart';
 
@@ -70,7 +71,13 @@ class _InvoiceTemplateScreenState extends State<InvoiceTemplateScreen> {
     if (applied == true && mounted) {
       setState(() => _selectedId = style.id);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('"${style.name}" is now this book\'s invoice template.')),
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context)
+                .invoiceTemplateApplied(invoiceTemplateName(
+                    AppLocalizations.of(context), style)),
+          ),
+        ),
       );
     }
   }
@@ -81,7 +88,7 @@ class _InvoiceTemplateScreenState extends State<InvoiceTemplateScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Invoice Template')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).invoiceTemplate)),
       body: Column(
         children: [
           Padding(
@@ -94,8 +101,7 @@ class _InvoiceTemplateScreenState extends State<InvoiceTemplateScreen> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Tap a template to see a full sample invoice, then apply it. '
-                'It\'s used everywhere this book generates a bill.',
+                AppLocalizations.of(context).invoiceTemplatePickerHint,
                 style: theme.textTheme.bodySmall?.copyWith(color: tones.textTertiary),
               ),
             ),
@@ -290,7 +296,7 @@ class _TemplateCardState extends State<_TemplateCard> {
                               const Icon(Icons.check, size: 11, color: Colors.white),
                               const SizedBox(width: AppSpacing.xxs),
                               Text(
-                                'In use',
+                                AppLocalizations.of(context).inUse,
                                 style: theme.textTheme.labelSmall?.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
@@ -317,7 +323,8 @@ class _TemplateCardState extends State<_TemplateCard> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        widget.style.name,
+                        invoiceTemplateName(
+                            AppLocalizations.of(context), widget.style),
                         style: theme.textTheme.labelLarge
                             ?.copyWith(fontWeight: FontWeight.w600),
                         maxLines: 1,
@@ -326,7 +333,8 @@ class _TemplateCardState extends State<_TemplateCard> {
                       const SizedBox(height: AppSpacing.xxs),
                       Expanded(
                         child: Text(
-                          widget.style.description,
+                          invoiceTemplateDescription(
+                              AppLocalizations.of(context), widget.style),
                           style: theme.textTheme.labelSmall
                               ?.copyWith(color: tones.textTertiary),
                           maxLines: 2,

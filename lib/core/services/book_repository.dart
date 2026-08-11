@@ -26,7 +26,7 @@ class BookRepository {
       id: id,
       userId: userId,
       type: BookType.individual,
-      name: 'My Individual Book',
+      name: 'Individual Book',
       createdAt: DateTime.now(),
     );
     await _books.doc(id).set(book.toMap());

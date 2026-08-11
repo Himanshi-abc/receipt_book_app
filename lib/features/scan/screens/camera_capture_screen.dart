@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/models/transaction_model.dart';
+import '../../../l10n/app_localizations.dart';
 import '../services/ocr_service.dart';
 import 'ocr_review_form_screen.dart';
 
@@ -54,16 +55,20 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(widget.type == TxType.income ? 'Scan Income Receipt' : 'Scan Expense Receipt')),
+      appBar: AppBar(
+          title: Text(widget.type == TxType.income
+              ? l10n.scanIncomeReceipt
+              : l10n.scanExpenseReceipt)),
       body: Center(
         child: _processing
-            ? const Column(
+            ? Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 12),
-                  Text('Reading receipt...'),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(l10n.readingReceipt),
                 ],
               )
             : Column(
@@ -76,20 +81,21 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                       border: Border.all(color: Colors.grey, width: 2),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Center(
-                      child: Text('Align receipt\nwithin frame', textAlign: TextAlign.center),
+                    child: Center(
+                      child: Text(l10n.alignReceiptWithinFrame,
+                          textAlign: TextAlign.center),
                     ),
                   ),
                   const SizedBox(height: 24),
                   FilledButton.icon(
                     icon: const Icon(Icons.camera_alt),
-                    label: const Text('Take Photo'),
+                    label: Text(l10n.takePhoto),
                     onPressed: () => _pick(ImageSource.camera),
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.photo_library),
-                    label: const Text('Choose from Gallery'),
+                    label: Text(l10n.chooseFromGallery),
                     onPressed: () => _pick(ImageSource.gallery),
                   ),
                   const SizedBox(height: 8),
@@ -104,7 +110,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                         ),
                       ),
                     ),
-                    child: const Text('Enter manually instead'),
+                    child: Text(l10n.enterManuallyInstead),
                   ),
                 ],
               ),

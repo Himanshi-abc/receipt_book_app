@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/design/app_colors.dart';
 import '../../../core/design/app_spacing.dart';
 import '../models/support_content.dart';
+import '../../../l10n/app_localizations.dart';
 
 /// Renders any [LegalDocument] - About, Privacy Policy, Terms.
 ///
@@ -42,7 +43,8 @@ class LegalDocumentScreen extends StatelessWidget {
               Text(document.title, style: theme.textTheme.headlineSmall),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                'Last updated ${document.lastUpdated}',
+                AppLocalizations.of(context)
+                    .lastUpdatedOn(document.lastUpdated),
                 style: theme.textTheme.labelSmall?.copyWith(color: tones.textTertiary),
               ),
               const SizedBox(height: AppSpacing.lg),

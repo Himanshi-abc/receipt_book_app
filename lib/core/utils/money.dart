@@ -23,6 +23,28 @@ class Money {
     return _inr.format(rupees);
   }
 
+  /// Compact Indian-numbering form for tight spaces (chart axes, dense
+  /// tiles) - ₹45K, ₹1.2L, ₹3Cr - where [format]'s full ₹1,23,45,600.00
+  /// would overflow or crowd out the rest of the layout.
+  static String compact(int paise) {
+    final rupees = paise / 100;
+    final abs = rupees.abs();
+    final sign = rupees < 0 ? '-' : '';
+    if (abs >= 10000000) return '$sign₹${_trimmed(abs / 10000000)}Cr';
+    if (abs >= 100000) return '$sign₹${_trimmed(abs / 100000)}L';
+    if (abs >= 1000) return '$sign₹${_trimmed(abs / 1000)}K';
+    return '$sign₹${abs.toStringAsFixed(0)}';
+  }
+
+  /// One decimal place, dropped when it's a whole number - "1.2" but "2",
+  /// not "2.0".
+  static String _trimmed(double value) {
+    final rounded = (value * 10).round() / 10;
+    return rounded == rounded.roundToDouble()
+        ? rounded.toStringAsFixed(0)
+        : rounded.toStringAsFixed(1);
+  }
+
   /// Convert a user-typed rupee string (e.g. "1234.5" from a text field)
   /// into paise (int). Never parse user input directly as double and store
   /// it - always go through this so rounding happens in exactly one place.

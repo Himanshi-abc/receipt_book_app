@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Receipt Book App</string>
+	<string>Dhandho</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>receipt_book_app</string>
+	<string>Dhandho</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -27,11 +27,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>ReceiptBook uses your camera to scan and attach receipts to your transactions.</string>
+	<string>Dhandho uses your camera to scan and attach receipts to your transactions.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>ReceiptBook uses your contacts to let you quickly add a customer or supplier from your address book.</string>
+	<string>Dhandho uses your contacts to let you quickly add a customer or supplier from your address book.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>ReceiptBook needs access to your photo library to attach receipt images to your transactions.</string>
+	<string>Dhandho needs access to your photo library to attach receipt images to your transactions.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

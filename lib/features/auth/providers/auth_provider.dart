@@ -25,7 +25,6 @@ class AuthProvider extends ChangeNotifier {
         _pendingVerificationId = id;
         notifyListeners();
       },
-      onError: (err) => throw Exception(err),
     );
   }
 
@@ -41,6 +40,58 @@ class AuthProvider extends ChangeNotifier {
     );
     return _authService.ensureUserDocAndCheckFirstLogin(cred.user!);
   }
+
+  /// Signup completion: verifies the mobile OTP (proving the number is
+  /// real and reachable), then links email/password to that same account
+  /// so the user ends up with one account carrying both sign-in methods.
+  Future<bool> completeSignUp({
+    required String smsCode,
+    required String email,
+    required String password,
+  }) async {
+    if (_pendingVerificationId == null) {
+      throw Exception('No OTP request in progress');
+    }
+    await _authService.verifyOtp(
+      verificationId: _pendingVerificationId!,
+      smsCode: smsCode,
+    );
+    try {
+      await _authService.linkEmailPassword(email, password);
+    } catch (_) {
+      // Roll back the bare phone-only account link created just above -
+      // e.g. the email turned out to already be registered - so the
+      // failed attempt doesn't leave an orphaned account behind.
+      await _authService.deleteCurrentUser();
+      rethrow;
+    }
+    return _authService.ensureUserDocAndCheckFirstLogin(_authService.currentUser!);
+  }
+
+  /// Forgot-password completion: verifies the mobile OTP. If the number
+  /// was never linked to an existing account, Firebase silently creates a
+  /// brand-new bare account for it - that's rolled back here so a stray
+  /// number can't be used to conjure an empty account.
+  Future<void> verifyOtpForPasswordReset(String smsCode) async {
+    if (_pendingVerificationId == null) {
+      throw Exception('No OTP request in progress');
+    }
+    final cred = await _authService.verifyOtp(
+      verificationId: _pendingVerificationId!,
+      smsCode: smsCode,
+    );
+    final isNewAccount = cred.additionalUserInfo?.isNewUser ?? false;
+    if (isNewAccount) {
+      await _authService.deleteCurrentUser();
+      throw Exception('No account found with this mobile number.');
+    }
+  }
+
+  Future<void> updatePassword(String newPassword) =>
+      _authService.updatePassword(newPassword);
+
+  Future<void> sendPasswordResetEmail(String email) =>
+      _authService.sendPasswordResetEmail(email);
 
   Future<bool> signInWithEmail(String email, String password) async {
     final cred = await _authService.signInWithEmail(email, password);

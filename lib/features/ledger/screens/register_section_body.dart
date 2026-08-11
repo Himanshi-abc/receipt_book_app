@@ -10,6 +10,7 @@ import '../../../core/services/category_repository.dart';
 import '../../../core/services/book_access_service.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_search_field.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../books/providers/book_provider.dart';
 import '../services/register_excel_service.dart';
 import '../widgets/transaction_tile.dart';
@@ -39,18 +40,26 @@ List<Category> registerCategoryOptions({
       ...ownCategories,
     ];
 
-/// Individual Book only: date filter for the register list, matching the
-/// same "tab dropdown" UI as the Categories filter. "This Year"/"Prev Year"
+/// Individual Book only: date filter for the register list, offered from
+/// the filter bottom sheet alongside Categories. "This Year"/"Prev Year"
 /// are Indian Financial Years (1 Apr - 31 Mar), not calendar years.
-enum DateFilterOption {
-  thisMonth('This Month'),
-  prevMonth('Prev Month'),
-  thisYear('This Year'),
-  prevYear('Prev Year');
+///
+/// Carries no label of its own - see [dateFilterLabel]. A hardcoded English
+/// label on the enum would be the one string the localization pipeline
+/// can't reach, since an enum constant has no BuildContext.
+enum DateFilterOption { thisMonth, prevMonth, thisYear, prevYear }
 
-  final String label;
-  const DateFilterOption(this.label);
-}
+/// The translated label for a [DateFilterOption]. A free function rather
+/// than an extension getter so the switch stays exhaustive - adding a
+/// fifth option becomes a compile error here instead of silently
+/// rendering blank.
+String dateFilterLabel(AppLocalizations l10n, DateFilterOption option) =>
+    switch (option) {
+      DateFilterOption.thisMonth => l10n.dateThisMonth,
+      DateFilterOption.prevMonth => l10n.datePrevMonth,
+      DateFilterOption.thisYear => l10n.dateThisYear,
+      DateFilterOption.prevYear => l10n.datePrevYear,
+    };
 
 /// The Income/Expense register: search, type/category filters, and the
 /// transaction list. Returns its own Scaffold (body + FAB only, no AppBar)
@@ -75,16 +84,32 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
   List<AppTransaction> _filtered = [];
 
   /// This book's own categories - the only ones the Categories filter
-  /// should ever offer for a Business Book (see [_categoryMenuOptions]).
+  /// should ever offer for a Business Book (see [_categoryMenuOptionsFor]).
   /// Loaded alongside the transactions, from the same book.
   List<Category> _customCategories = [];
 
   bool _loading = true;
+
+  /// All/Income/Expense - always visible on screen as its own chip row,
+  /// not tucked inside the filter sheet, so switching type stays a single
+  /// tap. Selecting a type clears [_categoryFilters], since the category
+  /// list itself is scoped to the selected type (see
+  /// [_categoryMenuOptionsFor]) and a stale selection could otherwise keep
+  /// filtering invisibly.
   TxType? _typeFilter;
-  String? _categoryFilter;
-  bool _categoryMenuOpen = false;
+
+  /// Category multi-select: empty means "every category". Only the filter
+  /// sheet (see [_openFilterSheet]) writes to this.
+  Set<String> _categoryFilters = {};
+
   DateFilterOption? _dateFilter;
-  bool _dateMenuOpen = false;
+
+  /// Whether the filter *sheet's* facets (category/date) have anything
+  /// active - drives the badge dot on the filter icon. Type isn't counted:
+  /// it's always visible on screen, so its own chip already shows whether
+  /// it's active.
+  bool _hasActiveFilters(bool isBusiness) =>
+      _categoryFilters.isNotEmpty || (_dateFilter != null && !isBusiness);
 
   @override
   void didChangeDependencies() {
@@ -111,7 +136,7 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
     final range = _dateRangeFor(_dateFilter);
     _filtered = _all.where((t) {
       if (_typeFilter != null && t.type != _typeFilter) return false;
-      if (_categoryFilter != null && t.categoryId != _categoryFilter) return false;
+      if (_categoryFilters.isNotEmpty && !_categoryFilters.contains(t.categoryId)) return false;
       if (range != null && (t.date.isBefore(range.start) || t.date.isAfter(range.end))) {
         return false;
       }
@@ -157,120 +182,173 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
     return matches.isEmpty ? categoryId : matches.first.name;
   }
 
-  List<Category> _categoryMenuOptions(bool isBusiness) {
+  List<Category> _categoryMenuOptionsFor(bool isBusiness, TxType? typeFilter) {
     final all = registerCategoryOptions(
       isBusiness: isBusiness,
       ownCategories: _customCategories,
     );
-    return (_typeFilter == null ? all : all.where((c) => c.type == _typeFilter))
+    return (typeFilter == null ? all : all.where((c) => c.type == typeFilter))
         .toList();
   }
 
-  /// A "Categories" tab-style dropdown, leftmost in the filter row (before
-  /// "All") - matches the underlined tab look used elsewhere in the design
-  /// (active tab in accent color with an underline). Same for both
-  /// Individual and Business Books; [isBusiness] only picks which category
-  /// list (see [registerCategoryOptions]) the dropdown offers.
-  Widget _buildCategoriesFilterTab(BuildContext context, bool isBusiness) {
-    final active = _categoryFilter != null || _categoryMenuOpen;
-    final accentColor = Theme.of(context).colorScheme.primary;
-    final color = active ? accentColor : Theme.of(context).textTheme.bodyLarge?.color;
-
-    return PopupMenuButton<String?>(
-      tooltip: 'Filter by category',
-      onOpened: () => setState(() => _categoryMenuOpen = true),
-      onCanceled: () => setState(() => _categoryMenuOpen = false),
-      onSelected: (value) => setState(() {
-        _categoryMenuOpen = false;
-        _categoryFilter = value;
-        _applyFilters();
-      }),
-      itemBuilder: (ctx) => [
-        const PopupMenuItem<String?>(value: null, child: Text('All categories')),
-        const PopupMenuDivider(),
-        ..._categoryMenuOptions(isBusiness)
-            .map((c) => PopupMenuItem<String?>(value: c.id, child: Text(c.name))),
-      ],
+  /// The filter icon button, leftmost next to the search field - tapping it
+  /// opens [_openFilterSheet] with the Category (and, Individual Book only,
+  /// Date) facets. All/Income/Expense stays out of the sheet entirely - see
+  /// the on-screen chip row built in [build] - so a small dot only badges
+  /// the icon when the sheet's own facets are active.
+  Widget _buildFilterButton(BuildContext context, bool isBusiness) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    final active = _hasActiveFilters(isBusiness);
+    return Badge(
+      isLabelVisible: active,
+      smallSize: 8,
+      backgroundColor: theme.colorScheme.primary,
       child: Container(
-        padding: const EdgeInsets.only(bottom: 6),
         decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: active ? accentColor : Colors.transparent,
-              width: 2,
-            ),
+          border: Border.all(
+            color: active ? theme.colorScheme.primary : theme.dividerColor,
           ),
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Categories',
-              style: TextStyle(color: color, fontWeight: FontWeight.w600),
-            ),
-            Icon(
-              _categoryMenuOpen ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-              color: color,
-              size: 20,
-            ),
-          ],
+        child: IconButton(
+          icon: Icon(
+            Icons.filter_list,
+            color: active ? theme.colorScheme.primary : null,
+          ),
+          tooltip: l10n.filters,
+          onPressed: () => _openFilterSheet(context, isBusiness),
         ),
       ),
     );
   }
 
-  /// Individual Book only: a "Date" tab-style dropdown matching
-  /// [_buildCategoriesFilterTab]'s look (see that method for the design
-  /// rationale). Offers This Month / Prev Month / This Year / Prev Year,
-  /// where the year options are Financial Years (1 Apr - 31 Mar).
-  Widget _buildDateFilterTab(BuildContext context) {
-    final active = _dateFilter != null || _dateMenuOpen;
-    final accentColor = Theme.of(context).colorScheme.primary;
-    final color = active ? accentColor : Theme.of(context).textTheme.bodyLarge?.color;
+  /// Bottom sheet holding the two remaining facets: Category (checkbox
+  /// multi-select - any transaction matching *any* checked category
+  /// passes) and, Individual Book only, Date (checkbox-styled but single-
+  /// select, since two financial periods can't both apply at once -
+  /// checking one clears whichever was checked before). The category list
+  /// is scoped to whatever Type is currently active on screen, same as
+  /// before. Selections are held locally until "Apply filters" so
+  /// cancelling (swipe-down/back) discards changes.
+  Future<void> _openFilterSheet(BuildContext context, bool isBusiness) async {
+    var tempCategories = Set<String>.of(_categoryFilters);
+    DateFilterOption? tempDate = _dateFilter;
+    final categoryOptions = _categoryMenuOptionsFor(isBusiness, _typeFilter);
 
-    return PopupMenuButton<DateFilterOption?>(
-      tooltip: 'Filter by date',
-      onOpened: () => setState(() => _dateMenuOpen = true),
-      onCanceled: () => setState(() => _dateMenuOpen = false),
-      onSelected: (value) => setState(() {
-        _dateMenuOpen = false;
-        _dateFilter = value;
-        _applyFilters();
-      }),
-      itemBuilder: (ctx) => [
-        const PopupMenuItem<DateFilterOption?>(value: null, child: Text('All dates')),
-        const PopupMenuDivider(),
-        ...DateFilterOption.values
-            .map((o) => PopupMenuItem<DateFilterOption?>(value: o, child: Text(o.label))),
-      ],
-      child: Container(
-        padding: const EdgeInsets.only(bottom: 6),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: active ? accentColor : Colors.transparent,
-              width: 2,
-            ),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Date', style: TextStyle(color: color, fontWeight: FontWeight.w600)),
-            Icon(
-              _dateMenuOpen ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-              color: color,
-              size: 20,
-            ),
-          ],
-        ),
+    final result = await showModalBottomSheet<
+        ({Set<String> categories, DateFilterOption? date})>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
       ),
+      builder: (ctx) {
+        final l10n = AppLocalizations.of(ctx);
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: AppSpacing.lg,
+                  right: AppSpacing.lg,
+                  top: AppSpacing.lg,
+                  bottom: AppSpacing.lg + MediaQuery.of(ctx).viewInsets.bottom,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(l10n.filters, style: Theme.of(ctx).textTheme.titleLarge),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () => setSheetState(() {
+                              tempCategories = {};
+                              tempDate = null;
+                            }),
+                            child: Text(l10n.actionClearAll),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Text(l10n.category, style: Theme.of(ctx).textTheme.titleSmall),
+                      if (categoryOptions.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                          child: Text(
+                            l10n.noCategoriesYet,
+                            style: Theme.of(ctx).textTheme.bodySmall,
+                          ),
+                        )
+                      else
+                        ...categoryOptions.map(
+                          (c) => CheckboxListTile(
+                            value: tempCategories.contains(c.id),
+                            title: Text(systemCategoryName(l10n, c)),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            onChanged: (checked) => setSheetState(() {
+                              if (checked == true) {
+                                tempCategories.add(c.id);
+                              } else {
+                                tempCategories.remove(c.id);
+                              }
+                            }),
+                          ),
+                        ),
+                      if (!isBusiness) ...[
+                        const SizedBox(height: AppSpacing.lg),
+                        Text(l10n.date, style: Theme.of(ctx).textTheme.titleSmall),
+                        ...DateFilterOption.values.map(
+                          (o) => CheckboxListTile(
+                            value: tempDate == o,
+                            title: Text(dateFilterLabel(l10n, o)),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            onChanged: (checked) => setSheetState(() {
+                              tempDate = checked == true ? o : null;
+                            }),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.xxl),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(
+                            ctx,
+                            (categories: tempCategories, date: tempDate),
+                          ),
+                          child: Text(l10n.actionApplyFilters),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
+
+    if (result == null || !mounted) return;
+    setState(() {
+      _categoryFilters = result.categories;
+      _dateFilter = result.date;
+      _applyFilters();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final bookProvider = context.watch<BookProvider>();
+    final l10n = AppLocalizations.of(context);
     final currentBook = bookProvider.currentBook;
     final writable = bookProvider.currentBookIsWritable;
     final isBusiness = currentBook?.isBusiness == true;
@@ -282,52 +360,59 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
               children: [
                 if (!writable) _buildLockBanner(context, bookProvider),
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.pageGutter, vertical: AppSpacing.md),
-                  child: AppSearchField(
-                    controller: _searchCtrl,
-                    hintText: 'Search vendor, notes, category...',
-                    onChanged: (_) => setState(_applyFilters),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.pageGutter,
+                    AppSpacing.md,
+                    AppSpacing.pageGutter,
+                    AppSpacing.sm,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFilterButton(context, isBusiness),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: AppSearchField(
+                          controller: _searchCtrl,
+                          hintText: l10n.searchRegisterHint,
+                          onChanged: (_) => setState(_applyFilters),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.pageGutter),
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        _buildCategoriesFilterTab(context, isBusiness),
-                        if (!isBusiness) ...[
-                          const SizedBox(width: 16),
-                          _buildDateFilterTab(context),
-                        ],
-                        const SizedBox(width: 16),
                         ChoiceChip(
-                          label: const Text('All'),
+                          label: Text(l10n.typeAll),
                           selected: _typeFilter == null,
                           onSelected: (_) => setState(() {
                             _typeFilter = null;
-                            _categoryFilter = null;
+                            _categoryFilters = {};
                             _applyFilters();
                           }),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: AppSpacing.sm),
                         ChoiceChip(
-                          label: const Text('Income'),
+                          label: Text(l10n.typeIncome),
                           selected: _typeFilter == TxType.income,
                           onSelected: (_) => setState(() {
                             _typeFilter = TxType.income;
-                            _categoryFilter = null;
+                            _categoryFilters = {};
                             _applyFilters();
                           }),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: AppSpacing.sm),
                         ChoiceChip(
-                          label: const Text('Expense'),
+                          label: Text(l10n.typeExpense),
                           selected: _typeFilter == TxType.expense,
                           onSelected: (_) => setState(() {
                             _typeFilter = TxType.expense;
-                            _categoryFilter = null;
+                            _categoryFilters = {};
                             _applyFilters();
                           }),
                         ),
@@ -335,25 +420,29 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
                     ),
                   ),
                 ),
-                if (_categoryFilter != null || (_dateFilter != null && !isBusiness))
+                if (_categoryFilters.isNotEmpty || (_dateFilter != null && !isBusiness))
                   Padding(
-                    padding: const EdgeInsets.only(left: 12, right: 12, top: 4),
+                    padding: const EdgeInsets.only(
+                        left: AppSpacing.pageGutter,
+                        right: AppSpacing.pageGutter,
+                        top: AppSpacing.xs),
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Wrap(
-                        spacing: 8,
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.xs,
                         children: [
-                          if (_categoryFilter != null)
+                          for (final categoryId in _categoryFilters)
                             Chip(
-                              label: Text(_categoryNameFor(_categoryFilter!, isBusiness)),
+                              label: Text(_categoryNameFor(categoryId, isBusiness)),
                               onDeleted: () => setState(() {
-                                _categoryFilter = null;
+                                _categoryFilters = Set.of(_categoryFilters)..remove(categoryId);
                                 _applyFilters();
                               }),
                             ),
                           if (_dateFilter != null && !isBusiness)
                             Chip(
-                              label: Text(_dateFilter!.label),
+                              label: Text(dateFilterLabel(l10n, _dateFilter!)),
                               onDeleted: () => setState(() {
                                 _dateFilter = null;
                                 _applyFilters();
@@ -371,12 +460,11 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
                           ? (_all.isEmpty
                               ? AppEmptyState(
                                   icon: Icons.receipt_long_outlined,
-                                  title: 'No transactions yet',
+                                  title: l10n.noTransactionsTitle,
                                   message: writable
-                                      ? 'Scan a receipt or add an entry manually to start '
-                                          'building your books.'
-                                      : 'This book has no entries yet.',
-                                  actionLabel: writable ? 'Add first entry' : null,
+                                      ? l10n.noTransactionsMessage
+                                      : l10n.noEntriesLockedMessage,
+                                  actionLabel: writable ? l10n.addFirstEntry : null,
                                   onAction: writable
                                       ? () async {
                                           await Navigator.push(
@@ -388,12 +476,10 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
                                         }
                                       : null,
                                 )
-                              : const AppEmptyState(
+                              : AppEmptyState(
                                   icon: Icons.search_off,
-                                  title: 'No matching entries',
-                                  message:
-                                      'Nothing matches the current search and filters. '
-                                      'Try clearing one of them.',
+                                  title: l10n.noMatchingEntriesTitle,
+                                  message: l10n.noMatchingEntriesMessage,
                                 ))
                           : RefreshIndicator(
                               onRefresh: _load,
@@ -449,9 +535,10 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
   /// i.e. with the active search/type/category/date filters applied.
   /// Excludes attachments; text fields only (see RegisterExcelService).
   Future<void> exportFilteredToExcel() async {
+    final l10n = AppLocalizations.of(context);
     if (_filtered.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No transactions to export for the current filters.')),
+        SnackBar(content: Text(l10n.exportNothingToExport)),
       );
       return;
     }
@@ -464,12 +551,12 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
       // null means the user cancelled the save dialog - not an error.
       if (path != null && mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Excel file saved.')));
+            .showSnackBar(SnackBar(content: Text(l10n.exportExcelSaved)));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Could not save Excel file: $e')));
+            .showSnackBar(SnackBar(content: Text(l10n.exportExcelFailed('$e'))));
       }
     }
   }
@@ -480,6 +567,7 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
   Widget _buildLockBanner(BuildContext context, BookProvider bookProvider) {
     final access = bookProvider.accessFor(bookProvider.currentBook!);
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final warning = context.tones.warning;
 
     return Container(
@@ -504,12 +592,12 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'This book is locked',
+                  l10n.bookLockedTitle,
                   style: theme.textTheme.titleSmall?.copyWith(color: warning.fg),
                 ),
                 const SizedBox(height: AppSpacing.xxs),
                 Text(
-                  BookAccessService.messageFor(access.reason),
+                  BookAccessService.messageFor(l10n, access.reason),
                   style: theme.textTheme.bodySmall?.copyWith(color: warning.fg),
                 ),
                 Align(
@@ -521,7 +609,7 @@ class RegisterSectionBodyState extends State<RegisterSectionBody> {
                     ),
                     onPressed: () =>
                         Navigator.pushNamed(context, '/settings/manage-books'),
-                    child: const Text('Switch active book / Upgrade'),
+                    child: Text(l10n.switchBookOrUpgrade),
                   ),
                 ),
               ],

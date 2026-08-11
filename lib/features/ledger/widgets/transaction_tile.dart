@@ -5,6 +5,7 @@ import '../../../core/design/app_colors.dart';
 import '../../../core/design/app_spacing.dart';
 import '../../../core/models/transaction_model.dart';
 import '../../../core/widgets/money_text.dart';
+import '../../../l10n/app_localizations.dart';
 
 /// A single income/expense row.
 ///
@@ -33,6 +34,7 @@ class TransactionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tones = context.tones;
+    final l10n = AppLocalizations.of(context);
     final isIncome = transaction.type == TxType.income;
     final tone = isIncome ? AppTone.positive : AppTone.negative;
     final toneColors = tones.byTone(tone);
@@ -79,7 +81,7 @@ class TransactionTile extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      name.isEmpty ? 'No name' : name,
+                      name.isEmpty ? l10n.noName : name,
                       style: theme.textTheme.titleSmall?.copyWith(
                         // An unnamed entry is a data gap, not a real name -
                         // de-emphasise rather than shouting "(No name)".
@@ -93,7 +95,13 @@ class TransactionTile extends StatelessWidget {
                     Row(
                       children: [
                         Text(
-                          DateFormat('dd MMM yyyy').format(transaction.date),
+                          // Locale-aware: without the explicit locale intl
+                          // falls back to en_US and the month name stays
+                          // English while the rest of the row is translated.
+                          DateFormat(
+                            'dd MMM yyyy',
+                            Localizations.localeOf(context).toString(),
+                          ).format(transaction.date),
                           style: theme.textTheme.bodySmall
                               ?.copyWith(color: tones.textTertiary),
                         ),
@@ -103,7 +111,7 @@ class TransactionTile extends StatelessWidget {
                             Icons.attach_file,
                             size: 13,
                             color: tones.textTertiary,
-                            semanticLabel: 'Has attachment',
+                            semanticLabel: l10n.hasAttachment,
                           ),
                         ],
                       ],
@@ -141,7 +149,7 @@ class TransactionTile extends StatelessWidget {
                             size: 12, color: tones.textTertiary),
                         const SizedBox(width: AppSpacing.xs),
                         Text(
-                          'Syncing',
+                          l10n.syncing,
                           style: theme.textTheme.labelSmall
                               ?.copyWith(color: tones.textTertiary),
                         ),

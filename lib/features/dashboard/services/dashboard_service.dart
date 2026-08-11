@@ -1,8 +1,11 @@
+import 'package:intl/intl.dart';
+
 import '../../../core/models/transaction_model.dart';
 import '../../../core/models/category_model.dart';
 import '../../../core/models/invoice_model.dart';
 import '../models/dashboard_date_range.dart';
 import '../models/dashboard_data.dart';
+import '../../../l10n/app_localizations.dart';
 
 enum TrendGranularity { daily, weekly, monthly }
 
@@ -20,6 +23,12 @@ class DashboardService {
     /// "Today" for the upcoming-due window. Injectable so the computation
     /// stays a pure function of its inputs (and testable without clocks).
     DateTime? now,
+
+    /// Supplies the few user-visible strings this computation bakes into
+    /// its result (the "Uncategorized" bucket name and the trend axis
+    /// labels). Optional so existing tests can call compute() without
+    /// pumping a widget; those labels then stay English.
+    AppLocalizations? l10n,
   }) {
     final today = now ?? DateTime.now();
     final txs = allTransactions.where((t) => range.contains(t.date)).toList();
@@ -41,15 +50,13 @@ class DashboardService {
       } else {
         // If business_use_percent is set, only that share counts toward
         // business expense/profit reporting (SRS 4.2's "part personal use").
-        final businessShare = t.businessUsePercent != null
-            ? (t.amountPaise * t.businessUsePercent! / 100).round()
-            : t.amountPaise;
+        final businessShare = _businessShareOf(t);
         totalExpense += businessShare;
         if (t.vendorOrCustomerName.isNotEmpty) {
           vendorTotals[t.vendorOrCustomerName] =
               (vendorTotals[t.vendorOrCustomerName] ?? 0) + businessShare;
         }
-        final catName = _categoryName(t.categoryId, categories);
+        final catName = _categoryName(t.categoryId, categories, l10n);
         categoryTotals[catName] = (categoryTotals[catName] ?? 0) + businessShare;
       }
     }
@@ -82,10 +89,22 @@ class DashboardService {
 
     // "Business Cashflow" - actual cash received/paid, till date, regardless
     // of a bill's paid/partial/unpaid status (see DashboardData.
-    // businessCashflowPaise).
-    final totalReceivedFromCustomers =
-        allSales.fold<int>(0, (a, i) => a + i.amountReceivedPaise);
-    final totalPaidToSuppliers = allPurchase.fold<int>(0, (a, i) => a + i.amountReceivedPaise);
+    // businessCashflowPaise). Two sources feed each side: bills
+    // (Invoice.amountReceivedPaise, already the paid-so-far amount whether
+    // the bill itself is paid/partial/unpaid) AND the Register/Ledger's own
+    // Income and Expense entries, which are cash movements in their own
+    // right and were previously left out entirely - that's what made this
+    // number not match the business's actual cash position. Till date like
+    // the bill totals, so this sums over allTransactions, not the
+    // date-range-filtered `txs` used for the period summary above.
+    final totalReceivedFromCustomers = allSales.fold<int>(0, (a, i) => a + i.amountReceivedPaise) +
+        allTransactions
+            .where((t) => t.type == TxType.income)
+            .fold<int>(0, (a, t) => a + t.amountPaise);
+    final totalPaidToSuppliers = allPurchase.fold<int>(0, (a, i) => a + i.amountReceivedPaise) +
+        allTransactions
+            .where((t) => t.type == TxType.expense)
+            .fold<int>(0, (a, t) => a + _businessShareOf(t));
 
     // Upcoming vs overdue. The predicates live on Invoice so the drill-down
     // list these cards open (DueBillsScreen) selects exactly the same bills
@@ -120,7 +139,7 @@ class DashboardService {
     return DashboardData(
       totalIncomePaise: totalIncome,
       totalExpensePaise: totalExpense,
-      trend: _buildTrend(txs, range),
+      trend: _buildTrend(txs, range, l10n),
       expenseByCategory: expenseByCategory,
       topCustomers: topCustomers.take(5).toList(),
       topVendors: topVendors.take(5).toList(),
@@ -144,13 +163,33 @@ class DashboardService {
     );
   }
 
-  static String _categoryName(String? categoryId, List<Category> categories) {
-    if (categoryId == null) return 'Uncategorized';
+  /// The share of an expense that counts toward business figures - the
+  /// full amount, unless `business_use_percent` marks it as only partly for
+  /// business (SRS 4.2). Shared by the period summary, the trend chart, and
+  /// Business Cashflow's Paid side so all three agree on what "an expense"
+  /// counts as.
+  static int _businessShareOf(AppTransaction t) => t.businessUsePercent != null
+      ? (t.amountPaise * t.businessUsePercent! / 100).round()
+      : t.amountPaise;
+
+  static String _categoryName(
+    String? categoryId,
+    List<Category> categories,
+    AppLocalizations? l10n,
+  ) {
+    final uncategorized = l10n?.uncategorized ?? 'Uncategorized';
+    if (categoryId == null) return uncategorized;
     final fromCustom = categories.where((c) => c.id == categoryId);
     if (fromCustom.isNotEmpty) return fromCustom.first.name;
+    // System categories carry a stable `sys_*` id and are renamed for
+    // display only - the stored id never changes with the language.
     final fromDefaults = Category.systemDefaults().where((c) => c.id == categoryId);
-    if (fromDefaults.isNotEmpty) return fromDefaults.first.name;
-    return 'Uncategorized';
+    if (fromDefaults.isNotEmpty) {
+      return l10n == null
+          ? fromDefaults.first.name
+          : systemCategoryName(l10n, fromDefaults.first);
+    }
+    return uncategorized;
   }
 
   static TrendGranularity _granularityFor(DashboardDateRange range) {
@@ -159,7 +198,11 @@ class DashboardService {
     return TrendGranularity.monthly;
   }
 
-  static List<TrendPoint> _buildTrend(List<AppTransaction> txs, DashboardDateRange range) {
+  static List<TrendPoint> _buildTrend(
+    List<AppTransaction> txs,
+    DashboardDateRange range,
+    AppLocalizations? l10n,
+  ) {
     final granularity = _granularityFor(range);
     final Map<DateTime, TrendPoint> buckets = {};
 
@@ -181,19 +224,20 @@ class DashboardService {
         case TrendGranularity.daily:
           return '${key.day}/${key.month}';
         case TrendGranularity.weekly:
-          return 'W/${key.day}/${key.month}';
+          return l10n == null
+              ? 'W/${key.day}/${key.month}'
+              : l10n.trendWeekLabel(key.day, key.month);
         case TrendGranularity.monthly:
-          const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-          return months[key.month - 1];
+          // Month name from intl for the active locale, rather than a
+          // hardcoded English table.
+          return DateFormat.MMM(l10n?.localeName).format(key);
       }
     }
 
     for (final t in txs) {
       final key = bucketKeyFor(t.date);
       final existing = buckets[key];
-      final businessShare = (t.type == TxType.expense && t.businessUsePercent != null)
-          ? (t.amountPaise * t.businessUsePercent! / 100).round()
-          : t.amountPaise;
+      final businessShare = t.type == TxType.expense ? _businessShareOf(t) : t.amountPaise;
       if (existing == null) {
         buckets[key] = TrendPoint(
           bucketStart: key,

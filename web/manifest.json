@@ -1,6 +1,6 @@
 {
-    "name": "receipt_book_app",
-    "short_name": "receipt_book_app",
+    "name": "Dhandho",
+    "short_name": "Dhandho",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

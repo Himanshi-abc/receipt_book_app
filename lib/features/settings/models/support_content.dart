@@ -6,6 +6,24 @@
 /// not at runtime.
 ///
 /// ---------------------------------------------------------------------
+/// NOT LOCALIZED - the only user-facing copy in the app that is still
+/// English-only. Everything else (every screen, dialog, snackbar, tooltip
+/// and validation message) resolves through AppLocalizations.
+///
+/// The FAQ entries are ordinary help copy and can be moved into the ARB
+/// files whenever someone wants to: give each [FaqItem] a stable id and
+/// resolve question/answer/category through a mapper, the same shape as
+/// `systemCategoryName` in core/models/category_model.dart.
+///
+/// The three [LegalDocument]s below (About, Privacy Policy, Terms) are a
+/// different problem and should NOT simply be machine-translated: the
+/// English text has not been through legal review yet (see the note
+/// immediately below), and a translated privacy policy or T&C is a
+/// separately binding document in each language. Have counsel sign off on
+/// the English first, then commission translations of the approved text.
+/// ---------------------------------------------------------------------
+///
+/// ---------------------------------------------------------------------
 /// BEFORE RELEASE - two things here are placeholders and must be replaced:
 ///
 ///   1. [SupportContacts] - the phone number, WhatsApp number, email and
@@ -31,12 +49,12 @@ class SupportContacts {
   static const String whatsappNumber = '918000000000';
 
   /// PLACEHOLDER - replace with the real support inbox.
-  static const String email = 'support@receiptbook.example';
+  static const String email = 'support@dhandho.example';
 
   /// PLACEHOLDER - replace with the registered business name and address.
-  static const String companyName = 'ReceiptBook';
+  static const String companyName = 'Dhandho';
   static const String registeredAddress =
-      'ReceiptBook, [registered office address], India';
+      'Dhandho, [registered office address], India';
 
   static const String supportHours = 'Monday to Saturday, 10 AM – 7 PM IST';
 
@@ -46,7 +64,7 @@ class SupportContacts {
   /// Prefilled first message, so the support agent starts with context
   /// instead of "hi".
   static const String whatsappGreeting =
-      "Hi ReceiptBook support, I need help with the app.";
+      "Hi Dhandho support, I need help with the app.";
 }
 
 /// One entry in the FAQ list.
@@ -68,9 +86,9 @@ const List<FaqItem> kFaqs = [
   // ---- Getting started ----
   FaqItem(
     category: 'Getting started',
-    question: 'What is ReceiptBook?',
+    question: 'What is Dhandho?',
     answer:
-        'ReceiptBook is a record-keeping app for individuals and small businesses '
+        'Dhandho is a record-keeping app for individuals and small businesses '
         'in India. You can scan and store receipts, track income and expenses, '
         'keep a customer and supplier ledger, generate GST-style invoices, and '
         'see a dashboard of how your business is doing. Everything is organised '
@@ -257,19 +275,19 @@ class LegalDocument {
 
 const String _lastUpdated = '1 August 2026';
 
-const LegalDocument kAboutReceiptBook = LegalDocument(
-  title: 'About ReceiptBook',
+const LegalDocument kAboutDhandho = LegalDocument(
+  title: 'About Dhandho',
   lastUpdated: _lastUpdated,
   sections: [
     DocSection(
       paragraphs: [
-        'ReceiptBook is a book-keeping app built for people who run small '
+        'Dhandho is a book-keeping app built for people who run small '
             'businesses in India, and for anyone who simply wants their receipts '
             'in one place instead of a drawer.',
         'Most small businesses do not lose money because they cannot read a '
             'balance sheet. They lose it because a receipt went missing, an '
             'invoice was never followed up, or nobody noticed a supplier payment '
-            'was already two weeks late. ReceiptBook is built around those '
+            'was already two weeks late. Dhandho is built around those '
             'everyday gaps rather than around accounting theory.',
       ],
     ),
@@ -301,7 +319,7 @@ const LegalDocument kAboutReceiptBook = LegalDocument(
     DocSection(
       heading: 'A word on tax',
       paragraphs: [
-        'ReceiptBook helps you keep organised records and prepare documents. '
+        'Dhandho helps you keep organised records and prepare documents. '
             'It is not a tax adviser, a chartered accountant or a legal service, '
             'and nothing it shows you is professional advice. For filings and '
             'anything with consequences, please consult a qualified '
@@ -326,7 +344,7 @@ const LegalDocument kPrivacyPolicy = LegalDocument(
   sections: [
     DocSection(
       paragraphs: [
-        'This policy explains what ReceiptBook ("we", "us") collects when you '
+        'This policy explains what Dhandho ("we", "us") collects when you '
             'use the app, why we collect it, and what control you have over it. '
             'We have tried to write it in plain language rather than in legal '
             'boilerplate.',
@@ -451,7 +469,7 @@ const LegalDocument kPrivacyPolicy = LegalDocument(
     DocSection(
       heading: '9. Children',
       paragraphs: [
-        'ReceiptBook is meant for adults running their own finances or '
+        'Dhandho is meant for adults running their own finances or '
             'business. It is not directed at children, and we do not knowingly '
             'collect information from anyone under 18. If you believe a child '
             'has given us information, contact us and we will delete it.',
@@ -483,12 +501,12 @@ const LegalDocument kTermsAndConditions = LegalDocument(
     DocSection(
       paragraphs: [
         'These terms are the agreement between you and ${SupportContacts.companyName} '
-            'for your use of the ReceiptBook app. Please read them - by creating '
+            'for your use of the Dhandho app. Please read them - by creating '
             'an account or using the app, you accept them.',
       ],
     ),
     DocSection(
-      heading: '1. Who can use ReceiptBook',
+      heading: '1. Who can use Dhandho',
       paragraphs: [
         'You must be at least 18 years old and able to enter into a binding '
             'contract. If you use the app on behalf of a business, you confirm '
@@ -524,7 +542,7 @@ const LegalDocument kTermsAndConditions = LegalDocument(
       heading: '4. Your content stays yours',
       paragraphs: [
         'The records, receipts, invoices and other content you put into '
-            'ReceiptBook belong to you. You grant us only the permission we need '
+            'Dhandho belong to you. You grant us only the permission we need '
             'to run the service - to store, back up, process and display that '
             'content to you and to anyone you choose to share it with.',
         'You are responsible for the content you enter, including having the '
@@ -535,7 +553,7 @@ const LegalDocument kTermsAndConditions = LegalDocument(
     DocSection(
       heading: '5. Acceptable use',
       bullets: [
-        'Do not use ReceiptBook for anything unlawful, including creating '
+        'Do not use Dhandho for anything unlawful, including creating '
             'false or misleading invoices or records.',
         'Do not attempt to break, overload, reverse engineer or gain '
             'unauthorised access to the app or its systems.',
@@ -548,7 +566,7 @@ const LegalDocument kTermsAndConditions = LegalDocument(
     DocSection(
       heading: '6. Accuracy, and what this app is not',
       paragraphs: [
-        'ReceiptBook helps you keep records and prepare documents. It does not '
+        'Dhandho helps you keep records and prepare documents. It does not '
             'provide tax, accounting, legal or financial advice, and it is not a '
             'substitute for a qualified professional.',
         'Automated features - including reading text from a scanned receipt '
@@ -561,7 +579,7 @@ const LegalDocument kTermsAndConditions = LegalDocument(
     DocSection(
       heading: '7. Availability',
       paragraphs: [
-        'We work to keep ReceiptBook available and reliable, but we do not '
+        'We work to keep Dhandho available and reliable, but we do not '
             'promise uninterrupted service. We may suspend the app for '
             'maintenance, and features may change, be added or be withdrawn over '
             'time. We will give reasonable notice before withdrawing something '
@@ -591,7 +609,7 @@ const LegalDocument kTermsAndConditions = LegalDocument(
     DocSection(
       heading: '10. Ending the agreement',
       paragraphs: [
-        'You may stop using ReceiptBook and ask us to delete your account at '
+        'You may stop using Dhandho and ask us to delete your account at '
             'any time. We may suspend or end your access if you seriously or '
             'repeatedly breach these terms, or where we are required to by law. '
             'Where it is reasonable to do so, we will tell you first and give '
@@ -610,7 +628,7 @@ const LegalDocument kTermsAndConditions = LegalDocument(
       paragraphs: [
         'We may update these terms as the app develops. The date at the top '
             'shows the latest version, and we will notify you in the app before '
-            'a significant change takes effect. Continuing to use ReceiptBook '
+            'a significant change takes effect. Continuing to use Dhandho '
             'after that means you accept the updated terms.',
       ],
     ),

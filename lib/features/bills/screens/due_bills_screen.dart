@@ -6,6 +6,7 @@ import '../../../core/models/book_model.dart';
 import '../../../core/models/invoice_model.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_stat_card.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../invoices/screens/invoice_preview_share_screen.dart';
 import '../../invoices/services/invoice_repository.dart';
 import 'bill_list_screen.dart';
@@ -37,14 +38,18 @@ class DueBillsScreen extends StatelessWidget {
   });
 
   bool get _isSales => direction == BillDirection.sales;
-  String get _title => _isSales ? 'Upcoming Sales Due' : 'Upcoming Purchase Due';
+
+  String _titleOf(AppLocalizations l10n) =>
+      _isSales ? l10n.upcomingSalesDue : l10n.upcomingPurchaseDue;
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
+    final l10n = AppLocalizations.of(context);
+    final title = _titleOf(l10n);
 
     return Scaffold(
-      appBar: AppBar(title: Text(_title)),
+      appBar: AppBar(title: Text(title)),
       body: StreamBuilder<List<Invoice>>(
         stream: InvoiceRepository().watchInvoices(book.id),
         builder: (context, snapshot) {
@@ -64,9 +69,10 @@ class DueBillsScreen extends StatelessWidget {
           if (bills.isEmpty) {
             return AppEmptyState(
               icon: Icons.event_available,
-              title: 'Nothing due in the next $windowDays days',
-              message: 'No ${_isSales ? 'sales' : 'purchase'} bills fall due in '
-                  'this window.',
+              title: l10n.nothingDueInNextDays(windowDays),
+              message: _isSales
+                  ? l10n.noSalesBillsDueInWindow
+                  : l10n.noPurchaseBillsDueInWindow,
               tone: AppTone.positive,
             );
           }
@@ -83,10 +89,10 @@ class DueBillsScreen extends StatelessWidget {
                   AppSpacing.sm,
                 ),
                 child: AppStatCard(
-                  label: _title,
-                  sublabel: _isSales ? 'To Collect' : 'To Pay',
+                  label: title,
+                  sublabel: _isSales ? l10n.toCollect : l10n.toPay,
                   amountPaise: totalPaise,
-                  caption: '${bills.length} bill(s) · balance still owed',
+                  caption: l10n.billsBalanceStillOwed(bills.length),
                   tone: _isSales ? AppTone.info : AppTone.warning,
                   icon: Icons.schedule,
                 ),

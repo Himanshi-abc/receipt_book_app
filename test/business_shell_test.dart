@@ -2,13 +2,46 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:receipt_book/core/navigation/business_section.dart';
+import 'package:receipt_book/l10n/app_localizations.dart';
 
 /// The Business Book section shell's navigation model.
 void main() {
   group('BusinessSection', () {
-    test('every section has an icon and a label', () {
+    testWidgets('businessSectionLabel translates every section',
+        (tester) async {
+      // The label used to be a const String on the enum, which no locale
+      // could ever reach. Same guard as localization_test's other mappers:
+      // a missing case would show up as English leaking into Hindi.
+      late AppLocalizations en;
+      late AppLocalizations hi;
+
+      Future<AppLocalizations> l10nFor(String code) async {
+        late AppLocalizations out;
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: Locale(code),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Builder(builder: (context) {
+              out = AppLocalizations.of(context);
+              return const SizedBox();
+            }),
+          ),
+        );
+        return out;
+      }
+
+      en = await l10nFor('en');
+      hi = await l10nFor('hi');
+
       for (final section in BusinessSection.values) {
-        expect(section.label.trim(), isNotEmpty, reason: section.name);
+        expect(businessSectionLabel(en, section).trim(), isNotEmpty,
+            reason: section.name);
+        expect(
+          businessSectionLabel(hi, section),
+          isNot(businessSectionLabel(en, section)),
+          reason: '${section.name} is not translated in Hindi',
+        );
       }
     });
 
@@ -16,7 +49,7 @@ void main() {
       // The shell builds one child per section in declaration order and
       // shows `_section.index`. Reordering the enum without reordering the
       // children would silently show the wrong section.
-      expect(BusinessSection.values.first, BusinessSection.bills);
+      expect(BusinessSection.values.first, BusinessSection.dashboard);
       expect(
         BusinessSection.values.map((s) => s.index).toList(),
         List.generate(BusinessSection.values.length, (i) => i),
@@ -46,7 +79,7 @@ void main() {
                 builder: (ctx) => TextButton(
                   onPressed: () => BusinessShellScope.goTo(
                     ctx,
-                    BusinessSection.customers,
+                    BusinessSection.parties,
                     fallbackRoute: '/customers',
                   ),
                   child: const Text('go'),
@@ -60,7 +93,7 @@ void main() {
       await tester.tap(find.text('go'));
       await tester.pumpAndSettle();
 
-      expect(selected, BusinessSection.customers);
+      expect(selected, BusinessSection.parties);
       expect(pushed, isFalse, reason: 'must not push a route inside the shell');
     });
 
@@ -76,7 +109,7 @@ void main() {
               builder: (ctx) => TextButton(
                 onPressed: () => BusinessShellScope.goTo(
                   ctx,
-                  BusinessSection.customers,
+                  BusinessSection.parties,
                   fallbackRoute: '/customers',
                 ),
                 child: const Text('go'),
@@ -110,7 +143,7 @@ void main() {
               builder: (ctx) => TextButton(
                 onPressed: () => BusinessShellScope.goTo(
                   ctx,
-                  BusinessSection.customers,
+                  BusinessSection.parties,
                   fallbackRoute: '/customers',
                   onReturn: () => returned++,
                 ),

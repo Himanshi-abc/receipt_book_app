@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/design/app_colors.dart';
 import '../../../core/design/app_spacing.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_search_field.dart';
 import '../models/support_content.dart';
@@ -58,7 +59,7 @@ class _FaqScreenState extends State<FaqScreen> {
     final searching = _searchCtrl.text.trim().isNotEmpty;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('FAQs')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).faqs)),
       body: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
@@ -74,17 +75,17 @@ class _FaqScreenState extends State<FaqScreen> {
                 ),
                 child: AppSearchField(
                   controller: _searchCtrl,
-                  hintText: 'Search help topics',
+                  hintText: AppLocalizations.of(context).searchHelpTopics,
                   onChanged: (_) => setState(() {}),
                 ),
               ),
               Expanded(
                 child: items.isEmpty
-                    ? const AppEmptyState(
+                    ? AppEmptyState(
                         icon: Icons.search_off,
-                        title: 'No answers matched',
-                        message: 'Try a different word, or message us from '
-                            'Help & Support and we will answer directly.',
+                        title: AppLocalizations.of(context).noAnswersMatched,
+                        message:
+                            AppLocalizations.of(context).noAnswersMatchedMessage,
                       )
                     : ListView(
                         padding: const EdgeInsets.only(bottom: AppSpacing.giant),

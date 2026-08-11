@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../design/app_motion.dart';
 
 /// The one search input.
@@ -67,7 +68,7 @@ class _AppSearchFieldState extends State<AppSearchField> {
               ? IconButton(
                   key: const ValueKey('clear'),
                   icon: const Icon(Icons.close, size: 18),
-                  tooltip: 'Clear search',
+                  tooltip: AppLocalizations.of(context).clearSearch,
                   onPressed: _clear,
                 )
               : const SizedBox.shrink(key: ValueKey('empty')),

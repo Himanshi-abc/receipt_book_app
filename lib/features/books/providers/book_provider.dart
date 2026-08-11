@@ -7,6 +7,7 @@ import '../../../core/services/book_access_service.dart';
 import '../../../core/services/book_repository.dart';
 import '../../../core/services/category_repository.dart';
 import '../../../core/services/contact_repository.dart';
+import '../../../l10n/app_localizations.dart';
 
 class BookProvider extends ChangeNotifier {
   final BookRepository _repo = BookRepository();
@@ -51,16 +52,21 @@ class BookProvider extends ChangeNotifier {
   Future<Book> createIndividualBookIfNeeded(String userId) =>
       _repo.createIndividualBookIfNeeded(userId);
 
+  /// [l10n] names the seeded default contacts and category. These are
+  /// ordinary editable records, not fixed system rows, so they're written
+  /// once in whatever language the user created the book in and can be
+  /// renamed afterwards like any other contact.
   Future<Book> createBusinessBook({
     required String userId,
     required String name,
     String? gstin,
     required String state,
     String? address,
+    required AppLocalizations l10n,
   }) async {
     final book = await _repo.createBusinessBook(
         userId: userId, name: name, gstin: gstin, state: state, address: address);
-    await _seedBusinessBookDefaults(book);
+    await _seedBusinessBookDefaults(book, l10n);
     return book;
   }
 
@@ -76,9 +82,12 @@ class BookProvider extends ChangeNotifier {
   /// intentional, not a collision - a user billing to that customer while
   /// categorising the matching ledger entry under the same name is exactly
   /// the point.
-  Future<void> _seedBusinessBookDefaults(Book book) async {
+  Future<void> _seedBusinessBookDefaults(
+    Book book,
+    AppLocalizations l10n,
+  ) async {
     final contactRepo = ContactRepository();
-    for (final name in const ['Daily Counter', 'Default Customer']) {
+    for (final name in [l10n.defaultContactDailyCounter, l10n.defaultContactCustomer]) {
       await contactRepo.saveContact(
         bookId: book.id,
         name: name,
@@ -87,7 +96,7 @@ class BookProvider extends ChangeNotifier {
     }
     await CategoryRepository().createCategory(
       bookId: book.id,
-      name: 'Daily Counter',
+      name: l10n.defaultContactDailyCounter,
       type: TxType.income,
     );
   }

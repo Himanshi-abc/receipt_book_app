@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/book_provider.dart';
 
@@ -33,8 +34,9 @@ class _FirstTimeSetupScreenState extends State<FirstTimeSetupScreen> {
     if (_creating) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Welcome to ReceiptBook')),
+      appBar: AppBar(title: Text(l10n.welcomeToDhandho)),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -43,26 +45,26 @@ class _FirstTimeSetupScreenState extends State<FirstTimeSetupScreen> {
           children: [
             const Icon(Icons.check_circle, color: Colors.green, size: 64),
             const SizedBox(height: 16),
-            const Text(
-              'Your Individual Book is ready.',
+            Text(
+              l10n.individualBookReady,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Use it to keep all your personal receipts organized for ITR time — always free.',
+            Text(
+              l10n.individualBookReadyMessage,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
             FilledButton(
               onPressed: () => Navigator.pushNamed(context, '/add-business-book'),
-              child: const Text('Add a Business Book'),
+              child: Text(l10n.addABusinessBook),
             ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () =>
                   Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false),
-              child: const Text('Skip for now'),
+              child: Text(l10n.skipForNow),
             ),
           ],
         ),

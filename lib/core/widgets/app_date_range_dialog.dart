@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../design/app_colors.dart';
 import '../design/app_spacing.dart';
 import '../design/app_typography.dart';
@@ -19,7 +21,11 @@ class AppDateRangeDialog extends StatefulWidget {
   final DateTime? initialEnd;
   final DateTime firstDate;
   final DateTime lastDate;
-  final String title;
+
+  /// Null means "use the default title for the active locale". It can't be
+  /// defaulted in the constructor because the default has to be looked up
+  /// against a BuildContext, which const initialisers can't do.
+  final String? title;
 
   const AppDateRangeDialog({
     super.key,
@@ -27,7 +33,7 @@ class AppDateRangeDialog extends StatefulWidget {
     this.initialEnd,
     required this.firstDate,
     required this.lastDate,
-    this.title = 'Custom date range',
+    this.title,
   });
 
   static Future<DateTimeRange?> show(
@@ -36,7 +42,7 @@ class AppDateRangeDialog extends StatefulWidget {
     DateTime? initialEnd,
     required DateTime firstDate,
     required DateTime lastDate,
-    String title = 'Custom date range',
+    String? title,
   }) {
     return showDialog<DateTimeRange>(
       context: context,
@@ -86,7 +92,7 @@ class _AppDateRangeDialogState extends State<AppDateRangeDialog> {
       initialDate: _from,
       firstDate: widget.firstDate,
       lastDate: widget.lastDate,
-      helpText: 'From date',
+      helpText: AppLocalizations.of(context).fromDate,
     );
     if (picked == null) return;
     setState(() {
@@ -104,7 +110,7 @@ class _AppDateRangeDialogState extends State<AppDateRangeDialog> {
       // The end can never precede the start, so don't offer dates that do.
       firstDate: _from,
       lastDate: widget.lastDate,
-      helpText: 'To date',
+      helpText: AppLocalizations.of(context).toDate,
     );
     if (picked == null) return;
     setState(() => _to = _dateOnly(picked));
@@ -114,9 +120,10 @@ class _AppDateRangeDialogState extends State<AppDateRangeDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tones = context.tones;
+    final l10n = AppLocalizations.of(context);
 
     return AlertDialog(
-      title: Text(widget.title),
+      title: Text(widget.title ?? l10n.customDateRangeTitle),
       contentPadding: const EdgeInsets.fromLTRB(
         AppSpacing.xxl,
         AppSpacing.lg,
@@ -127,17 +134,17 @@ class _AppDateRangeDialogState extends State<AppDateRangeDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _DateBox(label: 'From', date: _from, onTap: _pickFrom),
+          _DateBox(label: l10n.rangeFrom, date: _from, onTap: _pickFrom),
           // An arrow between the two boxes says "range" faster than the
           // labels alone do.
           Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
             child: Icon(Icons.arrow_downward, size: 16, color: tones.textTertiary),
           ),
-          _DateBox(label: 'To', date: _to, onTap: _pickTo),
+          _DateBox(label: l10n.rangeTo, date: _to, onTap: _pickTo),
           const SizedBox(height: AppSpacing.md),
           Text(
-            _dayCount == 1 ? '1 day selected' : '$_dayCount days selected',
+            l10n.daysSelected(_dayCount),
             textAlign: TextAlign.center,
             style: theme.textTheme.labelSmall?.copyWith(color: tones.textTertiary),
           ),
@@ -146,13 +153,13 @@ class _AppDateRangeDialogState extends State<AppDateRangeDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(l10n.actionCancel),
         ),
         FilledButton(
           // Always enabled: the pickers make an invalid range unreachable,
           // so there's no error state to guard against here.
           onPressed: () => Navigator.pop(context, DateTimeRange(start: _from, end: _to)),
-          child: const Text('Apply'),
+          child: Text(l10n.actionApply),
         ),
       ],
     );
@@ -168,14 +175,16 @@ class _DateBox extends StatelessWidget {
 
   const _DateBox({required this.label, required this.date, required this.onTap});
 
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
   /// "05 Aug 2026" - unambiguous, unlike 5/8 vs 8/5.
-  static String _format(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')} ${_months[d.month - 1]} ${d.year}';
+  ///
+  /// The month name comes from `intl` for the active locale rather than a
+  /// hardcoded English table, so it reads in the app's language. Date
+  /// symbols for the locale are registered by GlobalMaterialLocalizations
+  /// before this ever builds.
+  static String _format(BuildContext context, DateTime d) => DateFormat(
+        'dd MMM yyyy',
+        Localizations.localeOf(context).toString(),
+      ).format(d);
 
   @override
   Widget build(BuildContext context) {
@@ -210,7 +219,10 @@ class _DateBox extends StatelessWidget {
                           ?.copyWith(color: tones.textTertiary),
                     ),
                     const SizedBox(height: AppSpacing.xxs),
-                    Text(_format(date), style: theme.textTheme.titleSmall?.tabular),
+                    Text(
+                      _format(context, date),
+                      style: theme.textTheme.titleSmall?.tabular,
+                    ),
                   ],
                 ),
               ),

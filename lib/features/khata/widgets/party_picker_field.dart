@@ -3,6 +3,7 @@ import 'package:flutter_contacts/flutter_contacts.dart' as fc;
 
 import '../../../core/models/contact_model.dart';
 import '../../../core/services/contact_repository.dart';
+import '../../../l10n/app_localizations.dart';
 import '../screens/add_party_screen.dart';
 
 /// The "pick a Customer or Supplier" control: Select existing / Add new /
@@ -40,7 +41,7 @@ class PartyPickerField extends StatelessWidget {
     final picked = await showModalBottomSheet<Contact>(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => _ExistingPartySheet(contacts: contacts, partyLabel: label),
+      builder: (ctx) => _ExistingPartySheet(contacts: contacts, partyType: type),
     );
     if (picked != null) onChanged(picked);
   }
@@ -54,16 +55,17 @@ class PartyPickerField extends StatelessWidget {
   }
 
   Future<void> _importFromContacts(BuildContext context) async {
-    final granted = await fc.FlutterContacts.requestPermission();
+    final status = await fc.FlutterContacts.permissions.request(fc.PermissionType.read);
+    final granted = status == fc.PermissionStatus.granted || status == fc.PermissionStatus.limited;
     if (!granted) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contacts access was denied.')),
+          SnackBar(content: Text(AppLocalizations.of(context).contactsAccessDenied)),
         );
       }
       return;
     }
-    final deviceContacts = await fc.FlutterContacts.getContacts(withProperties: true);
+    final deviceContacts = await fc.FlutterContacts.getAll(properties: {fc.ContactProperty.phone});
     if (!context.mounted) return;
     final picked = await showModalBottomSheet<fc.Contact>(
       context: context,
@@ -74,7 +76,7 @@ class PartyPickerField extends StatelessWidget {
 
     final saved = await ContactRepository().saveContact(
       bookId: bookId,
-      name: picked.displayName,
+      name: picked.displayName ?? '',
       phone: picked.phones.isNotEmpty ? picked.phones.first.number : null,
       type: type,
     );
@@ -83,6 +85,8 @@ class PartyPickerField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final isCustomer = type == ContactType.customer;
     final party = selected;
     if (party != null) {
       return Card(
@@ -91,29 +95,31 @@ class PartyPickerField extends StatelessWidget {
           subtitle: Text(party.phone ?? ''),
           trailing: TextButton(
             onPressed: () => _selectExisting(context),
-            child: const Text('Change'),
+            child: Text(l10n.actionChange),
           ),
         ),
       );
     }
 
+    // Whole phrases per party type rather than "Select $label": building a
+    // verb phrase by concatenating a translated noun only works in English.
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: [
         OutlinedButton.icon(
           icon: const Icon(Icons.list_alt),
-          label: Text('Select $label'),
+          label: Text(isCustomer ? l10n.selectCustomer : l10n.selectSupplier),
           onPressed: () => _selectExisting(context),
         ),
         OutlinedButton.icon(
           icon: const Icon(Icons.person_add_outlined),
-          label: Text('Add $label'),
+          label: Text(isCustomer ? l10n.addCustomer : l10n.addSupplier),
           onPressed: () => _addManually(context),
         ),
         OutlinedButton.icon(
           icon: const Icon(Icons.contacts_outlined),
-          label: const Text('Import from Contacts'),
+          label: Text(l10n.importFromContacts),
           onPressed: () => _importFromContacts(context),
         ),
       ],
@@ -123,8 +129,11 @@ class PartyPickerField extends StatelessWidget {
 
 class _ExistingPartySheet extends StatefulWidget {
   final List<Contact> contacts;
-  final String partyLabel;
-  const _ExistingPartySheet({required this.contacts, required this.partyLabel});
+  /// The party type, not a pre-rendered label: the sheet needs to pick
+  /// whole translated phrases ("Search customers by name"), which can't be
+  /// assembled from a noun the caller already formatted.
+  final ContactType partyType;
+  const _ExistingPartySheet({required this.contacts, required this.partyType});
 
   @override
   State<_ExistingPartySheet> createState() => _ExistingPartySheetState();
@@ -155,7 +164,9 @@ class _ExistingPartySheetState extends State<_ExistingPartySheet> {
               child: TextField(
                 controller: _searchCtrl,
                 decoration: InputDecoration(
-                  hintText: 'Search ${widget.partyLabel.toLowerCase()}s',
+                  hintText: widget.partyType == ContactType.customer
+                      ? AppLocalizations.of(context).searchCustomerHint
+                      : AppLocalizations.of(context).searchSupplierHint,
                   prefixIcon: const Icon(Icons.search),
                   border: const OutlineInputBorder(),
                 ),
@@ -164,7 +175,10 @@ class _ExistingPartySheetState extends State<_ExistingPartySheet> {
             ),
             Expanded(
               child: _filtered.isEmpty
-                  ? Center(child: Text('No ${widget.partyLabel.toLowerCase()}s yet.'))
+                  ? Center(
+                      child: Text(widget.partyType == ContactType.customer
+                          ? AppLocalizations.of(context).noCustomersYet
+                          : AppLocalizations.of(context).noSuppliersYet))
                   : ListView.builder(
                       itemCount: _filtered.length,
                       itemBuilder: (ctx, i) {
@@ -201,7 +215,9 @@ class _DeviceContactPickerSheetState extends State<_DeviceContactPickerSheet> {
     setState(() {
       _filtered = q.isEmpty
           ? widget.contacts
-          : widget.contacts.where((c) => c.displayName.toLowerCase().contains(q)).toList();
+          : widget.contacts
+              .where((c) => (c.displayName ?? '').toLowerCase().contains(q))
+              .toList();
     });
   }
 
@@ -216,23 +232,24 @@ class _DeviceContactPickerSheetState extends State<_DeviceContactPickerSheet> {
               padding: const EdgeInsets.all(16),
               child: TextField(
                 controller: _searchCtrl,
-                decoration: const InputDecoration(
-                  hintText: 'Search contacts',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  hintText: AppLocalizations.of(context).searchContacts,
+                  prefixIcon: const Icon(Icons.search),
+                  border: const OutlineInputBorder(),
                 ),
                 onChanged: _filter,
               ),
             ),
             Expanded(
               child: _filtered.isEmpty
-                  ? const Center(child: Text('No contacts found.'))
+                  ? Center(
+                      child: Text(AppLocalizations.of(context).noContactsFound))
                   : ListView.builder(
                       itemCount: _filtered.length,
                       itemBuilder: (ctx, i) {
                         final c = _filtered[i];
                         return ListTile(
-                          title: Text(c.displayName),
+                          title: Text(c.displayName ?? ''),
                           subtitle: Text(c.phones.isNotEmpty ? c.phones.first.number : ''),
                           onTap: () => Navigator.pop(context, c),
                         );

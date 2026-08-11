@@ -1,5 +1,5 @@
 name: receipt_book
-description: "ReceiptBook - Income/Expense Receipt Scanner + Business Dashboard + GST Invoice Generator + ITR Helper"
+description: "Dhandho - Income/Expense Receipt Scanner + Business Dashboard + GST Invoice Generator + ITR Helper"
 publish_to: 'none'
 version: 0.1.0
 
@@ -9,7 +9,17 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Localization: ships Material/Cupertino/Widgets translations for every
+  # supported locale, so date pickers, dialogs and tooltips are translated
+  # too - not just our own strings. See l10n.yaml + lib/l10n/*.arb.
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.6
+
+  # Remembers the chosen app language across launches (device-level
+  # preference, deliberately NOT a book-scoped syncable entity, so it does
+  # not belong in LocalDb's {id, bookId, json, ...} tables).
+  shared_preferences: ^2.3.2
 
   # State management
   provider: ^6.1.2
@@ -37,7 +47,9 @@ dependencies:
   connectivity_plus: ^6.0.5
 
   # Utilities
-  intl: ^0.19.0
+  # Pinned to 0.20.x by flutter_localizations (SDK). The DateFormat /
+  # NumberFormat APIs this app uses are unchanged from 0.19.
+  intl: ^0.20.2
   uuid: ^4.4.2
   share_plus: ^10.0.2
   local_auth: ^2.3.0   # biometric app lock
@@ -47,7 +59,7 @@ dependencies:
 
   # Khata ledger (Customers/Suppliers): pick a party from device contacts,
   # call a party from their ledger screen
-  flutter_contacts: ^1.1.9+2
+  flutter_contacts: ^2.3.1
   url_launcher: ^6.3.0
   font_awesome_flutter: ^11.0.0  # WhatsApp brand icon (not in Material Icons)
 
@@ -61,3 +73,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # Generates AppLocalizations from lib/l10n/*.arb on every build/pub get.
+  generate: true

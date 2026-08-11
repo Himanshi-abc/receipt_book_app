@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/support_content.dart';
+import '../../../l10n/app_localizations.dart';
 
 /// Opens the outside-the-app support channels.
 ///
@@ -25,7 +26,8 @@ class SupportLauncher {
     if (!opened && context.mounted) {
       _notify(
         context,
-        "Couldn't open WhatsApp. Message us on ${SupportContacts.phoneNumber}.",
+        AppLocalizations.of(context)
+            .couldNotOpenWhatsappMessageUs(SupportContacts.phoneNumber),
       );
     }
   }
@@ -39,7 +41,10 @@ class SupportLauncher {
       opened = false;
     }
     if (!opened && context.mounted) {
-      _notify(context, 'Call us on ${SupportContacts.phoneNumber}.');
+      _notify(
+          context,
+          AppLocalizations.of(context)
+              .callUsOnNumber(SupportContacts.phoneNumber));
     }
   }
 

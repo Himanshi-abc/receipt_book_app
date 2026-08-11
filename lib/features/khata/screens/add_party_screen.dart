@@ -3,6 +3,7 @@ import 'package:flutter_contacts/flutter_contacts.dart' as fc;
 import 'package:provider/provider.dart';
 import '../../../core/models/contact_model.dart';
 import '../../../core/services/contact_repository.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../books/providers/book_provider.dart';
 
 /// Add a new Customer or Supplier, either picked from the device's
@@ -42,19 +43,20 @@ class _AddPartyScreenState extends State<AddPartyScreen> {
   }
 
   Future<void> _pickFromContacts() async {
-    final granted = await fc.FlutterContacts.requestPermission();
+    final status = await fc.FlutterContacts.permissions.request(fc.PermissionType.read);
+    final granted = status == fc.PermissionStatus.granted || status == fc.PermissionStatus.limited;
     if (!granted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Contacts access was denied. You can still add this party manually.'),
+          SnackBar(
+            content: Text(AppLocalizations.of(context).contactsDeniedAddManually),
           ),
         );
       }
       return;
     }
 
-    final deviceContacts = await fc.FlutterContacts.getContacts(withProperties: true);
+    final deviceContacts = await fc.FlutterContacts.getAll(properties: {fc.ContactProperty.phone});
     if (!mounted) return;
 
     final picked = await showModalBottomSheet<fc.Contact>(
@@ -65,7 +67,7 @@ class _AddPartyScreenState extends State<AddPartyScreen> {
     if (picked == null) return;
 
     setState(() {
-      _nameCtrl.text = picked.displayName;
+      _nameCtrl.text = picked.displayName ?? '';
       _phoneCtrl.text = picked.phones.isNotEmpty ? picked.phones.first.number : '';
     });
   }
@@ -86,47 +88,54 @@ class _AddPartyScreenState extends State<AddPartyScreen> {
     );
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppLocalizations.of(context).savedSnack)),
+      );
       Navigator.of(context).pop(saved);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final isCustomer = widget.defaultType == ContactType.customer;
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing
-            ? (widget.defaultType == ContactType.customer ? 'Edit Customer' : 'Edit Supplier')
-            : (widget.defaultType == ContactType.customer ? 'Add Customer' : 'Add Supplier')),
+            ? (isCustomer ? l10n.editCustomer : l10n.editSupplier)
+            : (isCustomer ? l10n.addCustomer : l10n.addSupplier)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           OutlinedButton.icon(
             icon: const Icon(Icons.contacts_outlined),
-            label: const Text('Add from Contacts'),
+            label: Text(l10n.addFromContacts),
             onPressed: _pickFromContacts,
           ),
           const SizedBox(height: 8),
-          Text('or fill in the details below', style: TextStyle(color: Colors.grey.shade600)),
+          Text(l10n.orFillInDetailsBelow,
+              style: TextStyle(color: Colors.grey.shade600)),
           const SizedBox(height: 16),
           TextField(
             controller: _nameCtrl,
-            decoration: const InputDecoration(labelText: 'Party Name *'),
+            decoration: InputDecoration(labelText: l10n.partyNameRequired),
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _phoneCtrl,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(labelText: 'Mobile Number *'),
+            decoration: InputDecoration(labelText: l10n.mobileNumberRequired),
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 16),
           SegmentedButton<ContactType>(
-            segments: const [
-              ButtonSegment(value: ContactType.customer, label: Text('Customer')),
-              ButtonSegment(value: ContactType.vendor, label: Text('Supplier')),
+            segments: [
+              ButtonSegment(
+                  value: ContactType.customer, label: Text(l10n.partyCustomer)),
+              ButtonSegment(
+                  value: ContactType.vendor, label: Text(l10n.partySupplier)),
             ],
             selected: {_type},
             onSelectionChanged: (s) => setState(() => _type = s.first),
@@ -134,12 +143,12 @@ class _AddPartyScreenState extends State<AddPartyScreen> {
           const SizedBox(height: 16),
           TextField(
             controller: _gstinCtrl,
-            decoration: const InputDecoration(labelText: 'GSTIN (optional)'),
+            decoration: InputDecoration(labelText: l10n.gstinOptional),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _addressCtrl,
-            decoration: const InputDecoration(labelText: 'Address (optional)'),
+            decoration: InputDecoration(labelText: l10n.addressOptional),
             maxLines: 2,
           ),
           const SizedBox(height: 24),
@@ -148,7 +157,7 @@ class _AddPartyScreenState extends State<AddPartyScreen> {
             child: _saving
                 ? const SizedBox(
                     height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Save'),
+                : Text(l10n.actionSave),
           ),
         ],
       ),
@@ -173,7 +182,9 @@ class _DeviceContactPickerSheetState extends State<_DeviceContactPickerSheet> {
     setState(() {
       _filtered = q.isEmpty
           ? widget.contacts
-          : widget.contacts.where((c) => c.displayName.toLowerCase().contains(q)).toList();
+          : widget.contacts
+              .where((c) => (c.displayName ?? '').toLowerCase().contains(q))
+              .toList();
     });
   }
 
@@ -190,23 +201,24 @@ class _DeviceContactPickerSheetState extends State<_DeviceContactPickerSheet> {
                 padding: const EdgeInsets.all(16),
                 child: TextField(
                   controller: _searchCtrl,
-                  decoration: const InputDecoration(
-                    hintText: 'Search contacts',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    hintText: AppLocalizations.of(context).searchContacts,
+                    prefixIcon: const Icon(Icons.search),
+                    border: const OutlineInputBorder(),
                   ),
                   onChanged: _filter,
                 ),
               ),
               Expanded(
                 child: _filtered.isEmpty
-                    ? const Center(child: Text('No contacts found.'))
+                    ? Center(
+                        child: Text(AppLocalizations.of(context).noContactsFound))
                     : ListView.builder(
                         itemCount: _filtered.length,
                         itemBuilder: (ctx, i) {
                           final c = _filtered[i];
                           return ListTile(
-                            title: Text(c.displayName),
+                            title: Text(c.displayName ?? ''),
                             subtitle: Text(c.phones.isNotEmpty ? c.phones.first.number : ''),
                             onTap: () => Navigator.pop(context, c),
                           );

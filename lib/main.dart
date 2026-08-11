@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'app.dart';
+import 'core/services/locale_provider.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -20,5 +21,11 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(const ReceiptBookApp());
+
+  // Resolve the saved language before the first frame, so the app opens
+  // directly in it instead of rendering English and then re-rendering.
+  final localeProvider = LocaleProvider();
+  await localeProvider.load();
+
+  runApp(DhandhoApp(localeProvider: localeProvider));
 }

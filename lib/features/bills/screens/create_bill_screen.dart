@@ -6,6 +6,7 @@ import '../../../core/models/invoice_model.dart';
 import '../../../core/models/product_model.dart';
 import '../../../core/services/contact_repository.dart';
 import '../../../core/utils/money.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../invoices/services/invoice_repository.dart';
 import '../../invoices/services/tax_rule_config_repository.dart';
 import '../../khata/widgets/party_picker_field.dart';
@@ -13,7 +14,23 @@ import '../../products/screens/add_product_screen.dart';
 import '../../products/services/product_repository.dart';
 import 'product_line_item_screen.dart';
 
+/// Stored values, not display copy. The selected mode is persisted on the
+/// Invoice and printed on the PDF, so these strings must stay stable and
+/// language-independent; [paymentModeLabel] translates them for display.
 const kPaymentModes = ['Cash', 'UPI', 'Card', 'Bank Transfer', 'Cheque', 'Other'];
+
+/// The translated caption for one of [kPaymentModes]. Falls back to the
+/// stored value so an older invoice carrying a mode no longer in the list
+/// still renders something rather than blank.
+String paymentModeLabel(AppLocalizations l10n, String mode) => switch (mode) {
+      'Cash' => l10n.paymentModeCash,
+      'UPI' => l10n.paymentModeUpi,
+      'Card' => l10n.paymentModeCard,
+      'Bank Transfer' => l10n.paymentModeBankTransfer,
+      'Cheque' => l10n.paymentModeCheque,
+      'Other' => l10n.paymentModeOther,
+      _ => mode,
+    };
 
 class _BillLineItemDraft {
   final String id;
@@ -110,7 +127,8 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
   bool get _isEditing => widget.existingInvoice != null;
   bool get _isSales => widget.direction == BillDirection.sales;
   ContactType get _partyType => _isSales ? ContactType.customer : ContactType.vendor;
-  String get _partyLabel => _isSales ? 'Customer' : 'Supplier';
+  String _partyLabelOf(AppLocalizations l10n) =>
+      _isSales ? l10n.partyCustomer : l10n.partySupplier;
 
   /// paise -> editable string, but blank (not "0") when there's nothing to
   /// show yet - matches the rest of the form's blank-by-default fields.
@@ -234,15 +252,18 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
   }
 
   Future<void> _save() async {
+    final l10n = AppLocalizations.of(context);
     if (_selectedParty == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Select a $_partyLabel first.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            _isSales ? l10n.selectACustomerFirst : l10n.selectASupplierFirst),
+      ));
       return;
     }
     final validItems = _lineItems.where((li) => li.isValid).map((li) => li.toModel()).toList();
     if (validItems.isEmpty) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Add at least one product.')));
+          .showSnackBar(SnackBar(content: Text(l10n.addAtLeastOneProduct)));
       return;
     }
 
@@ -290,8 +311,9 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content:
-              Text('${existing == null ? 'Created' : 'Updated'} ${invoice.invoiceNumber}.'),
+          content: Text(existing == null
+              ? l10n.invoiceCreated(invoice.invoiceNumber)
+              : l10n.invoiceUpdated(invoice.invoiceNumber)),
         ),
       );
       Navigator.pop(context);
@@ -300,11 +322,13 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final partyLabel = _partyLabelOf(l10n);
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing
-            ? (_isSales ? 'Edit Sale' : 'Edit Purchase')
-            : (_isSales ? 'New Sale' : 'New Purchase')),
+            ? (_isSales ? l10n.editSale : l10n.editPurchase)
+            : (_isSales ? l10n.newSale : l10n.newPurchase)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -313,7 +337,7 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
             children: [
               Expanded(
                 child: _DateField(
-                  label: 'Date',
+                  label: l10n.date,
                   date: _billDate,
                   icon: Icons.calendar_today,
                   onTap: _pickDate,
@@ -322,24 +346,24 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: _DateField(
-                  label: 'Due Date',
+                  label: l10n.dueDate,
                   date: _dueDate,
                   icon: Icons.event_outlined,
                   helperText: _dueDatePickedManually
                       ? null
-                      : 'Default: ${Invoice.defaultCreditDays} days',
+                      : l10n.defaultCreditDays(Invoice.defaultCreditDays),
                   onTap: _pickDueDate,
                 ),
               ),
             ],
           ),
           const Divider(height: 32),
-          Text(_partyLabel, style: Theme.of(context).textTheme.titleMedium),
+          Text(partyLabel, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           PartyPickerField(
             bookId: widget.book.id,
             type: _partyType,
-            label: _partyLabel,
+            label: partyLabel,
             selected: _selectedParty,
             onChanged: (c) => setState(() => _selectedParty = c),
           ),
@@ -347,10 +371,10 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Products', style: Theme.of(context).textTheme.titleMedium),
+              Text(l10n.navProducts, style: Theme.of(context).textTheme.titleMedium),
               TextButton.icon(
                 icon: const Icon(Icons.add),
-                label: const Text('Add Product'),
+                label: Text(l10n.addProduct),
                 onPressed: _addProduct,
               ),
             ],
@@ -359,18 +383,20 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
           if (_lineItems.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text('No products added yet.', style: TextStyle(color: Colors.grey.shade600)),
+              child: Text(l10n.noProductsAddedYet,
+                  style: TextStyle(color: Colors.grey.shade600)),
             ),
           const Divider(height: 32),
           TextField(
             controller: _chargeDescCtrl,
-            decoration: const InputDecoration(labelText: 'Additional Charge description (optional)'),
+            decoration:
+                InputDecoration(labelText: l10n.additionalChargeDescription),
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _chargeAmountCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Additional Charge amount (₹, optional)'),
+            decoration: InputDecoration(labelText: l10n.additionalChargeAmount),
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 12),
@@ -383,7 +409,9 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
                   controller: _discountCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
-                    labelText: _discountIsPercent ? 'Discount (%, optional)' : 'Discount (₹, optional)',
+                    labelText: _discountIsPercent
+                        ? l10n.discountPercentOptional
+                        : l10n.discountRupeesOptional,
                   ),
                   onChanged: (_) => setState(() {}),
                 ),
@@ -393,7 +421,7 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
                 flex: 2,
                 child: DropdownButtonFormField<bool>(
                   initialValue: _discountIsPercent,
-                  decoration: const InputDecoration(labelText: 'Type'),
+                  decoration: InputDecoration(labelText: l10n.fieldType),
                   items: const [
                     DropdownMenuItem(value: false, child: Text('₹')),
                     DropdownMenuItem(value: true, child: Text('%')),
@@ -406,7 +434,7 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
           const Divider(height: 32),
           Align(
             alignment: Alignment.centerRight,
-            child: Text('Grand Total: ${Money.format(_grandTotalPaise)}',
+            child: Text(l10n.grandTotalWithAmount(Money.format(_grandTotalPaise)),
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ),
           const SizedBox(height: 16),
@@ -420,20 +448,25 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
             // says so; the underlying model doesn't need a second concept
             // for what is still the same field on the Invoice.
             decoration: InputDecoration(
-              labelText: _isSales ? 'Amount Received (₹)' : 'Amount Paid (₹)',
+              labelText: _isSales ? l10n.amountReceivedLabel : l10n.amountPaidLabel,
             ),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             initialValue: _paymentMode,
-            decoration: const InputDecoration(labelText: 'Payment Mode'),
-            items: kPaymentModes.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+            decoration: InputDecoration(labelText: l10n.paymentMode),
+            items: kPaymentModes
+                .map((m) => DropdownMenuItem(
+                      value: m,
+                      child: Text(paymentModeLabel(l10n, m)),
+                    ))
+                .toList(),
             onChanged: (v) => setState(() => _paymentMode = v),
           ),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             value: _fullyPaid,
-            title: const Text('Mark as fully paid'),
+            title: Text(l10n.markAsFullyPaid),
             onChanged: (v) => setState(() {
               _fullyPaid = v ?? false;
               if (_fullyPaid) {
@@ -447,7 +480,7 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
             child: _saving
                 ? const SizedBox(
                     height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : Text(_isEditing ? 'Save' : 'Create'),
+                : Text(_isEditing ? l10n.actionSave : l10n.actionCreate),
           ),
         ],
       ),
@@ -455,6 +488,7 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
   }
 
   Widget _buildLineItemCard(_BillLineItemDraft draft) {
+    final l10n = AppLocalizations.of(context);
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
       child: Padding(
@@ -467,7 +501,7 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
                 Expanded(
                   child: TextField(
                     controller: draft.descCtrl,
-                    decoration: const InputDecoration(labelText: 'Description'),
+                    decoration: InputDecoration(labelText: l10n.fieldDescription),
                     onChanged: (_) => setState(() {}),
                   ),
                 ),
@@ -483,7 +517,7 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
                   child: TextField(
                     controller: draft.rateCtrl,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'Price (₹)'),
+                    decoration: InputDecoration(labelText: l10n.priceLabel),
                     onChanged: (_) => setState(() {}),
                   ),
                 ),
@@ -492,7 +526,7 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
                   child: TextField(
                     controller: draft.qtyCtrl,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'Qty'),
+                    decoration: InputDecoration(labelText: l10n.qtyLabel),
                     onChanged: (_) => setState(() {}),
                   ),
                 ),
@@ -504,7 +538,7 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
                 Expanded(
                   child: DropdownButtonFormField<double>(
                     initialValue: _taxRates.contains(draft.taxRate) ? draft.taxRate : null,
-                    decoration: const InputDecoration(labelText: 'Tax %'),
+                    decoration: InputDecoration(labelText: l10n.taxPercentLabel),
                     items: _taxRates
                         .map((r) => DropdownMenuItem(value: r, child: Text('$r%')))
                         .toList(),
@@ -609,6 +643,7 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return SafeArea(
       child: SizedBox(
         height: MediaQuery.of(context).size.height * 0.75,
@@ -621,10 +656,10 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
                   Expanded(
                     child: TextField(
                       controller: _searchCtrl,
-                      decoration: const InputDecoration(
-                        hintText: 'Search products by name or code',
-                        prefixIcon: Icon(Icons.search),
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        hintText: l10n.searchProductsHint,
+                        prefixIcon: const Icon(Icons.search),
+                        border: const OutlineInputBorder(),
                       ),
                       onChanged: _filter,
                     ),
@@ -632,7 +667,7 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
                   const SizedBox(width: 8),
                   IconButton(
                     icon: const Icon(Icons.add_circle_outline),
-                    tooltip: 'Add Product',
+                    tooltip: l10n.addProduct,
                     onPressed: _createNew,
                   ),
                 ],
@@ -640,7 +675,7 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
             ),
             Expanded(
               child: _filtered.isEmpty
-                  ? const Center(child: Text('No products found.'))
+                  ? Center(child: Text(l10n.noProductsFound))
                   : ListView.builder(
                       itemCount: _filtered.length,
                       itemBuilder: (ctx, i) {

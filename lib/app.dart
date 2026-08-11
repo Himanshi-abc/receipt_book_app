@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'core/design/app_theme.dart';
 import 'core/navigation/business_section.dart';
+import 'core/services/locale_provider.dart';
+import 'l10n/app_localizations.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/books/providers/book_provider.dart';
@@ -11,10 +14,15 @@ import 'features/books/screens/business_profile_screen.dart';
 import 'features/invoices/screens/invoice_template_screen.dart';
 import 'features/ledger/screens/home_ledger_screen.dart';
 import 'features/ledger/screens/register_screen.dart';
+import 'features/settings/screens/language_screen.dart';
 import 'features/settings/screens/settings_screen.dart';
 
-class ReceiptBookApp extends StatelessWidget {
-  const ReceiptBookApp({super.key});
+class DhandhoApp extends StatelessWidget {
+  /// Pre-loaded in main() so the very first frame is already in the saved
+  /// language, rather than flashing English and then swapping.
+  final LocaleProvider localeProvider;
+
+  const DhandhoApp({super.key, required this.localeProvider});
 
   @override
   Widget build(BuildContext context) {
@@ -22,10 +30,28 @@ class ReceiptBookApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => BookProvider()),
+        ChangeNotifierProvider.value(value: localeProvider),
       ],
-      child: MaterialApp(
-        title: 'ReceiptBook',
+      // Only the MaterialApp rebuilds when the language changes - the
+      // provider list above stays intact, so switching language never tears
+      // down AuthProvider/BookProvider (which would log the user out and
+      // re-fetch every book).
+      child: Consumer<LocaleProvider>(
+        builder: (context, locales, _) => MaterialApp(
+        title: 'Dhandho',
         debugShowCheckedModeBanner: false,
+        // Null locale = follow the device language; see LocaleProvider.
+        locale: locales.locale,
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          // Translate Flutter's own widgets too (date picker, text-selection
+          // menu, dialog buttons) - without these they stay English while
+          // the rest of the app is not.
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
         // Pinned to light for now. The dark token set is complete and the
@@ -45,19 +71,25 @@ class ReceiptBookApp extends StatelessWidget {
               const HomeLedgerScreen(initialSection: BusinessSection.dashboard),
           '/bills': (_) =>
               const HomeLedgerScreen(initialSection: BusinessSection.bills),
+          // Customers and Suppliers are now one merged Parties section (see
+          // BusinessSection.parties); both route names are kept so any
+          // existing deep link still lands inside the shell, just on the
+          // Customers-default Parties view rather than a dedicated screen.
           '/customers': (_) =>
-              const HomeLedgerScreen(initialSection: BusinessSection.customers),
+              const HomeLedgerScreen(initialSection: BusinessSection.parties),
           '/suppliers': (_) =>
-              const HomeLedgerScreen(initialSection: BusinessSection.suppliers),
+              const HomeLedgerScreen(initialSection: BusinessSection.parties),
           '/products': (_) =>
               const HomeLedgerScreen(initialSection: BusinessSection.products),
           '/register': (_) => const RegisterScreen(),
           '/add-business-book': (_) => const AddBusinessBookScreen(),
           '/settings': (_) => const SettingsScreen(),
+          '/settings/language': (_) => const LanguageScreen(),
           '/settings/manage-books': (_) => const ManageBooksScreen(),
           '/settings/business-profile': (_) => const BusinessProfileScreen(),
           '/settings/invoice-template': (_) => const InvoiceTemplateScreen(),
         },
+        ),
       ),
     );
   }

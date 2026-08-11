@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:receipt_book/core/design/app_theme.dart';
 import 'package:receipt_book/core/widgets/app_date_range_dialog.dart';
 import 'package:receipt_book/features/bills/models/bill_date_range.dart';
+import 'package:receipt_book/l10n/app_localizations.dart';
 
 /// The Bills section's custom date-range filter.
 void main() {
@@ -48,6 +49,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        
           theme: AppTheme.light(),
           home: Scaffold(
             body: Builder(

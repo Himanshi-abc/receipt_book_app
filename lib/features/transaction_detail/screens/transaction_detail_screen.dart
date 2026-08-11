@@ -5,6 +5,8 @@ import '../../../core/services/attachment_file_service.dart';
 import '../../../core/services/transaction_repository.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/widgets/attachment_card.dart';
+import '../../../core/widgets/detail_row.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../books/providers/book_provider.dart';
 import '../../scan/screens/ocr_review_form_screen.dart';
 import '../../scan/services/ocr_service.dart';
@@ -57,14 +59,19 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   }
 
   Future<void> _delete() async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete this transaction?'),
-        content: const Text('This can be recovered from support within the retention window.'),
+        title: Text(l10n.deleteTransactionTitle),
+        content: Text(l10n.deletePartyMessage),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l10n.actionCancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l10n.actionDelete)),
         ],
       ),
     );
@@ -80,7 +87,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Could not share file: $e')));
+            .showSnackBar(SnackBar(content: Text(
+                AppLocalizations.of(context).couldNotShareFile('$e'))));
       }
     }
   }
@@ -92,25 +100,32 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       // no snackbar in that case.
       if (saved && mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Downloaded.')));
+            .showSnackBar(SnackBar(
+                content: Text(AppLocalizations.of(context).downloadedSnack)));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Could not download file: $e')));
+            .showSnackBar(SnackBar(content: Text(
+                AppLocalizations.of(context).downloadFailed('$e'))));
       }
     }
   }
 
   Future<void> _deleteAttachment(ReceiptImage img) async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Remove this attachment?'),
-        content: const Text('This cannot be undone.'),
+        title: Text(l10n.removeAttachmentTitle),
+        content: Text(l10n.cannotBeUndone),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l10n.actionCancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l10n.actionRemove)),
         ],
       ),
     );
@@ -138,13 +153,15 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       noReceiptReason: tx.noReceiptReason,
     );
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attachment removed.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(AppLocalizations.of(context).attachmentRemoved)));
     }
     _load();
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final writable = context.watch<BookProvider>().currentBookIsWritable;
     final book = context.watch<BookProvider>().currentBook;
     final isBusiness = book?.isBusiness == true;
@@ -178,28 +195,38 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                     color: Colors.orange.shade50,
                     child: Padding(
                       padding: const EdgeInsets.all(12),
-                      child: Text('No receipt on file. Reason: ${tx.noReceiptReason ?? "-"}'),
+                      child: Text(l10n.noReceiptOnFileReason(
+                          tx.noReceiptReason ?? '-')),
                     ),
                   )
-                : Text('No receipt attached', style: TextStyle(color: Colors.grey.shade600)),
+                : Text(l10n.noReceiptAttached,
+                    style: TextStyle(color: Colors.grey.shade600)),
           ];
 
     final detailRows = <Widget>[
-      _row('Amount', Money.format(tx.amountPaise)),
-      if (isBusiness) _row('Tax', Money.format(tx.taxAmountPaise)),
-      _row(isIncome ? 'Payer / Customer' : 'Vendor', tx.vendorOrCustomerName),
-      _row('Date', '${tx.date.day}/${tx.date.month}/${tx.date.year}'),
-      _row('Financial Year', tx.financialYear),
-      if (tx.notes != null) _row('Notes', tx.notes!),
-      if (tx.businessUsePercent != null) _row('Business use', '${tx.businessUsePercent}%'),
+      DetailRow(label: l10n.fieldAmount, value: Money.format(tx.amountPaise)),
+      if (isBusiness)
+        DetailRow(label: l10n.fieldTax, value: Money.format(tx.taxAmountPaise)),
+      DetailRow(
+          label: isIncome ? l10n.payerCustomer : l10n.partyVendor,
+          value: tx.vendorOrCustomerName),
+      DetailRow(
+          label: l10n.date,
+          value: '${tx.date.day}/${tx.date.month}/${tx.date.year}'),
+      DetailRow(label: l10n.financialYear, value: tx.financialYear),
+      if (tx.notes != null) DetailRow(label: l10n.notesLabel, value: tx.notes!),
+      if (tx.businessUsePercent != null)
+        DetailRow(
+            label: l10n.businessUse, value: '${tx.businessUsePercent}%'),
       if (tx.pendingSync)
-        const Padding(
-          padding: EdgeInsets.only(top: 12, bottom: 4),
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 4),
           child: Row(
             children: [
-              Icon(Icons.cloud_upload_outlined, size: 16, color: Colors.grey),
-              SizedBox(width: 6),
-              Text('Waiting to sync', style: TextStyle(color: Colors.grey)),
+              const Icon(Icons.cloud_upload_outlined, size: 16, color: Colors.grey),
+              const SizedBox(width: 6),
+              Text(l10n.waitingToSync,
+                  style: const TextStyle(color: Colors.grey)),
             ],
           ),
         ),
@@ -207,7 +234,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isIncome ? 'Income' : 'Expense'),
+        title: Text(isIncome ? l10n.typeIncome : l10n.typeExpense),
         actions: [
           if (writable)
             IconButton(icon: const Icon(Icons.edit_outlined), onPressed: _edit),
@@ -226,8 +253,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                 const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 8),
-                Text('Receipt',
-                    style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
+                Text(l10n.receipt,
+                    style: TextStyle(
+                        color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 ...receiptSection,
               ],
@@ -235,16 +263,6 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     );
   }
 
-  Widget _row(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(width: 140, child: Text(label, style: const TextStyle(color: Colors.grey))),
-            Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500))),
-          ],
-        ),
-      );
 }
 
 extension _FirstOrNull<T> on Iterable<T> {

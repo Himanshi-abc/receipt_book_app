@@ -1,3 +1,4 @@
+import '../../l10n/app_localizations.dart';
 import '../models/book_model.dart';
 import '../models/subscription_model.dart';
 
@@ -61,16 +62,19 @@ class BookAccessService {
       check(book, subscription).writable;
 
   /// User-facing copy for the lock banner shown on a locked book.
-  static String messageFor(LockReason reason) {
+  ///
+  /// The gate itself ([check]) stays pure and unit-testable; only this
+  /// presentation helper needs the locale.
+  static String messageFor(AppLocalizations l10n, LockReason reason) {
     switch (reason) {
       case LockReason.notLocked:
         return '';
       case LockReason.noSubscription:
-        return 'Start your 1-month free trial to use this Business Book.';
+        return l10n.lockNoSubscription;
       case LockReason.expiredNotChosen:
-        return 'Your trial has ended. Choose a plan to continue editing this book.';
+        return l10n.lockTrialEnded;
       case LockReason.lockedByPlan:
-        return 'This book is locked under your Single Book Plan. Switch your active book or upgrade to Multi-Book to unlock it.';
+        return l10n.lockedBySingleBookPlan;
     }
   }
 }

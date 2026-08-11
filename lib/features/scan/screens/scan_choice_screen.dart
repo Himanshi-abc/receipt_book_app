@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/models/transaction_model.dart';
+import '../../../l10n/app_localizations.dart';
 import 'camera_capture_screen.dart';
 
 class ScanChoiceScreen extends StatelessWidget {
@@ -8,21 +9,21 @@ class ScanChoiceScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('New Transaction')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).newTransaction)),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             _ChoiceCard(
-              label: 'Income',
+              label: AppLocalizations.of(context).typeIncome,
               icon: Icons.arrow_downward,
               color: Colors.green,
               onTap: () => _goToCamera(context, TxType.income),
             ),
             const SizedBox(height: 16),
             _ChoiceCard(
-              label: 'Expense',
+              label: AppLocalizations.of(context).typeExpense,
               icon: Icons.arrow_upward,
               color: Colors.red,
               onTap: () => _goToCamera(context, TxType.expense),

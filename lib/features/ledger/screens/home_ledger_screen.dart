@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../core/design/app_breakpoints.dart';
 import '../../../core/design/app_spacing.dart';
 import '../../../core/models/contact_model.dart';
 import '../../../core/navigation/business_section.dart';
 import '../../../core/widgets/book_switcher.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../books/providers/book_provider.dart';
 import '../../bills/screens/bill_list_screen.dart';
 import '../../dashboard/screens/business_dashboard_screen.dart';
@@ -17,9 +19,10 @@ import 'register_section_body.dart';
 ///   show, so it's both the default and only view. Its AppBar gets a
 ///   "download all data as Excel" icon that exports whatever the register
 ///   currently has on screen, active filters included.
-/// - Business Book: a persistent shell over all six sections. The AppBar
-///   (business name + section icons) stays put and the body swaps beneath
-///   it, so any section is one tap from any other.
+/// - Business Book: a persistent shell over all five sections (Dashboard,
+///   Bills, Register, Parties, Products). The AppBar (business name +
+///   section icons) stays put and the body swaps beneath it, so any section
+///   is one tap from any other.
 ///
 /// The sections used to be pushed routes, which meant every move between
 /// two of them cost a back-tap plus a second tap to pick the next one -
@@ -50,9 +53,19 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
 
   late BusinessSection _section = widget.initialSection;
 
+  /// Which of Customers/Suppliers the merged Parties section is showing.
+  /// Defaults to Customers, matching the standalone screens' old default
+  /// entry point.
+  ContactType _partyType = ContactType.customer;
+
   void _select(BusinessSection section) {
     if (_section == section) return;
     setState(() => _section = section);
+  }
+
+  void _selectPartyType(ContactType type) {
+    if (_partyType == type) return;
+    setState(() => _partyType = type);
   }
 
   /// The section-specific AppBar action, if the current section has one.
@@ -63,24 +76,28 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
       case BusinessSection.register:
         return IconButton(
           icon: const Icon(Icons.file_download_outlined),
-          tooltip: 'Download register (Excel)',
+          tooltip: AppLocalizations.of(context).downloadRegisterExcel,
           onPressed: () => _businessRegisterKey.currentState?.exportFilteredToExcel(),
         );
-      case BusinessSection.customers:
-        return IconButton(
-          icon: const Icon(Icons.file_download_outlined),
-          tooltip: 'Download customers with outstanding amount (Excel)',
-          onPressed: () => _customersKey.currentState?.downloadCustomersExcel(),
-        );
+      case BusinessSection.parties:
+        // Only Customers has an Excel export today (see
+        // PartyListScreen.downloadCustomersExcel) - Suppliers has no
+        // equivalent, same as the pre-merge standalone screens.
+        return _partyType == ContactType.customer
+            ? IconButton(
+                icon: const Icon(Icons.file_download_outlined),
+                tooltip: AppLocalizations.of(context).downloadCustomersOutstandingExcel,
+                onPressed: () => _customersKey.currentState?.downloadCustomersExcel(),
+              )
+            : null;
       case BusinessSection.products:
         return IconButton(
           icon: const Icon(Icons.picture_as_pdf_outlined),
-          tooltip: 'Download product list (PDF)',
+          tooltip: AppLocalizations.of(context).downloadProductListPdf,
           onPressed: () => _productsKey.currentState?.downloadProductsPdf(),
         );
       case BusinessSection.bills:
       case BusinessSection.dashboard:
-      case BusinessSection.suppliers:
         return null;
     }
   }
@@ -102,12 +119,12 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
           actions: [
             IconButton(
               icon: const Icon(Icons.file_download_outlined),
-              tooltip: 'Download all data (Excel)',
+              tooltip: AppLocalizations.of(context).downloadAllDataExcel,
               onPressed: () => _registerKey.currentState?.exportFilteredToExcel(),
             ),
             IconButton(
               icon: const Icon(Icons.settings),
-              tooltip: 'Settings',
+              tooltip: AppLocalizations.of(context).settingsTitle,
               onPressed: () => Navigator.pushNamed(context, '/settings'),
             ),
           ],
@@ -117,33 +134,48 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
     }
 
     final sectionAction = _sectionAction();
+    final settingsAction = IconButton(
+      icon: const Icon(Icons.settings),
+      tooltip: AppLocalizations.of(context).settingsTitle,
+      onPressed: () => Navigator.pushNamed(context, '/settings'),
+    );
+
+    // On a phone the five sections move out of the AppBar and into a bottom
+    // NavigationBar - the native pattern for peer sections, and one tap from
+    // any section to any other without the top strip having to scroll. At
+    // tablet/desktop width the AppBar strip is kept exactly as before.
+    final compact = context.isCompact;
 
     return BusinessShellScope(
       current: _section,
       select: _select,
+      selectPartyType: _selectPartyType,
       child: Scaffold(
         appBar: AppBar(
           title: const BookSwitcher(),
-          // A single scrolling strip rather than a plain actions list:
-          // six section icons plus settings plus a section action is more
-          // than a 360dp phone can lay out, and AppBar actions clip
-          // silently rather than wrapping - the last icons would simply be
-          // unreachable. Scrolling keeps every one of them tappable at any
-          // width.
-          actions: [
-            _SectionActionsStrip(
-              current: _section,
-              onSelect: _select,
-              trailing: [
-                if (sectionAction != null) sectionAction,
-                IconButton(
-                  icon: const Icon(Icons.settings),
-                  tooltip: 'Settings',
-                  onPressed: () => Navigator.pushNamed(context, '/settings'),
-                ),
-              ],
-            ),
-          ],
+          actions: compact
+              // Sections live in the bottom bar now, so the AppBar only
+              // carries the current section's action plus Settings.
+              ? [
+                  if (sectionAction != null) sectionAction,
+                  settingsAction,
+                ]
+              // A single scrolling strip rather than a plain actions list:
+              // five section icons plus settings plus a section action is
+              // more than a 360dp phone can lay out, and AppBar actions clip
+              // silently rather than wrapping - the last icons would simply
+              // be unreachable. Scrolling keeps every one of them tappable at
+              // any width.
+              : [
+                  _SectionActionsStrip(
+                    current: _section,
+                    onSelect: _select,
+                    trailing: [
+                      if (sectionAction != null) sectionAction,
+                      settingsAction,
+                    ],
+                  ),
+                ],
         ),
         // IndexedStack, not a switch: rebuilding a section from scratch on
         // every visit would drop the user's filters and scroll position,
@@ -154,6 +186,26 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
             for (final section in BusinessSection.values) _bodyFor(section),
           ],
         ),
+        bottomNavigationBar: compact
+            ? NavigationBar(
+                selectedIndex: _section.index,
+                onDestinationSelected: (i) =>
+                    _select(BusinessSection.values[i]),
+                // Only-selected labels keep all five destinations legible at
+                // 360dp, where five always-on labels ("Dashboard",
+                // "Register") would crowd and ellipsize.
+                labelBehavior:
+                    NavigationDestinationLabelBehavior.onlyShowSelected,
+                destinations: [
+                  for (final section in BusinessSection.values)
+                    NavigationDestination(
+                      icon: Icon(section.icon),
+                      label: businessSectionLabel(
+                          AppLocalizations.of(context), section),
+                    ),
+                ],
+              )
+            : null,
       ),
     );
   }
@@ -166,21 +218,87 @@ class _HomeLedgerScreenState extends State<HomeLedgerScreen> {
         return const BusinessDashboardScreen(embedded: true);
       case BusinessSection.register:
         return RegisterSectionBody(key: _businessRegisterKey);
-      case BusinessSection.customers:
-        return PartyListScreen(
-          key: _customersKey,
-          type: ContactType.customer,
-          embedded: true,
-        );
-      case BusinessSection.suppliers:
-        return PartyListScreen(
-          key: _suppliersKey,
-          type: ContactType.vendor,
-          embedded: true,
+      case BusinessSection.parties:
+        return _PartiesBody(
+          type: _partyType,
+          onTypeChanged: _selectPartyType,
+          customersKey: _customersKey,
+          suppliersKey: _suppliersKey,
         );
       case BusinessSection.products:
-        return const ProductListScreen(embedded: true);
+        return ProductListScreen(key: _productsKey, embedded: true);
     }
+  }
+}
+
+/// Customers and Suppliers used to be two separate sections; this merges
+/// them into one "Parties" section with a toggle at the top, defaulting to
+/// Customers. Both lists are kept alive underneath (IndexedStack, not a
+/// conditional build) so toggling back and forth doesn't drop a party's
+/// search text or scroll position - the same reason the outer shell keeps
+/// every top-level section alive.
+class _PartiesBody extends StatelessWidget {
+  final ContactType type;
+  final ValueChanged<ContactType> onTypeChanged;
+  final GlobalKey<PartyListScreenState> customersKey;
+  final GlobalKey<PartyListScreenState> suppliersKey;
+
+  const _PartiesBody({
+    required this.type,
+    required this.onTypeChanged,
+    required this.customersKey,
+    required this.suppliersKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.pageGutter, AppSpacing.md, AppSpacing.pageGutter, AppSpacing.sm),
+          child: Row(
+            children: [
+              Expanded(
+                child: SegmentedButton<ContactType>(
+                  segments: [
+                    ButtonSegment(
+                      value: ContactType.customer,
+                      label: Text(AppLocalizations.of(context).customers),
+                      icon: const Icon(Icons.people_outline),
+                    ),
+                    ButtonSegment(
+                      value: ContactType.vendor,
+                      label: Text(AppLocalizations.of(context).suppliers),
+                      icon: const Icon(Icons.local_shipping_outlined),
+                    ),
+                  ],
+                  selected: {type},
+                  onSelectionChanged: (s) => onTypeChanged(s.first),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: IndexedStack(
+            index: type == ContactType.customer ? 0 : 1,
+            children: [
+              PartyListScreen(
+                key: customersKey,
+                type: ContactType.customer,
+                embedded: true,
+              ),
+              PartyListScreen(
+                key: suppliersKey,
+                type: ContactType.vendor,
+                embedded: true,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -264,7 +382,7 @@ class _SectionIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: section.label,
+      message: businessSectionLabel(AppLocalizations.of(context), section),
       child: IconButton(
         onPressed: onTap,
         // Without a selected state the bar can't answer "where am I?" -

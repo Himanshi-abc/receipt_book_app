@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:receipt_book/l10n/app_localizations.dart';
 
 import 'package:receipt_book/core/design/app_theme.dart';
 import 'package:receipt_book/core/models/invoice_model.dart';
@@ -292,6 +293,8 @@ void main() {
     testWidgets('lays out inside an unbounded-height ListView', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           theme: AppTheme.light(),
           home: Scaffold(
             body: ListView(
@@ -312,7 +315,10 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('Upcoming Purchase Due'), findsOneWidget);
       expect(find.text('Upcoming Sales Due'), findsOneWidget);
-      expect(find.text('2 purchase bill(s) due in 3 days'), findsOneWidget);
+      // The caption no longer repeats "purchase"/"sales" - the card's own
+      // label above it already states the direction, and dropping the noun
+      // is what let the string be translated as one phrase per locale.
+      expect(find.text('2 bill(s) due in 3 days'), findsOneWidget);
       expect(find.text('Nothing due in 3 days'), findsOneWidget);
     });
   });
@@ -321,6 +327,8 @@ void main() {
     testWidgets('lays out inside an unbounded-height ListView', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           theme: AppTheme.light(),
           home: Scaffold(
             body: ListView(
@@ -341,7 +349,7 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('Overdue Purchase Bills'), findsOneWidget);
       expect(find.text('Overdue Sales Bills'), findsOneWidget);
-      expect(find.text('1 purchase bill(s) past due date'), findsOneWidget);
+      expect(find.text('1 bill(s) past due date'), findsOneWidget);
       expect(find.text('Nothing overdue'), findsOneWidget);
     });
   });
@@ -366,6 +374,8 @@ void main() {
     Future<void> pumpAndTap(WidgetTester tester, Widget card, String label) async {
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           theme: AppTheme.light(),
           home: Scaffold(
             body: ListView(padding: const EdgeInsets.all(16), children: [card]),

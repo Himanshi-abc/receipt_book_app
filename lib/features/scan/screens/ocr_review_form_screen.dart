@@ -16,6 +16,7 @@ import '../../../core/services/category_repository.dart';
 import '../../../core/widgets/attachment_card.dart';
 import '../../books/providers/book_provider.dart';
 import '../../khata/widgets/party_picker_field.dart';
+import '../../../l10n/app_localizations.dart';
 import '../services/ocr_service.dart';
 
 /// SRS 4.2 steps 5-7 + the hard rule: "If OCR fails completely or the user
@@ -32,8 +33,9 @@ import '../services/ocr_service.dart';
 ///   reason" flow - the receipt attachment is just another optional field,
 ///   placed in the normal field order rather than as a special step.
 /// - Business Book (Income and Expense): no tax-amount field, no
-///   "business use %" field, and no "no receipt available" bypass - a
-///   receipt is always required. The Category dropdown has no built-in
+///   "business use %" field, and no "no receipt available + reason"
+///   bypass - the receipt is simply optional on both forms, so there is
+///   nothing to waive. The Category dropdown has no built-in
 ///   categories at all (kept fully separate from the Individual Book's
 ///   defaults) - only categories the user has created for this book, plus
 ///   an option to create a new one (of the matching Income/Expense type)
@@ -132,7 +134,11 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
   /// Income books to a Customer, Expense to a Vendor - same direction Bills
   /// uses for Sales/Purchase (see CreateBillScreen._partyType).
   ContactType get _partyType => _isIncome ? ContactType.customer : ContactType.vendor;
-  String get _partyLabel => _isIncome ? 'Customer' : 'Vendor';
+
+  /// A method rather than a getter now: the label is translated, so it
+  /// needs the resolved localizations rather than a bare string constant.
+  String _partyLabel(AppLocalizations l10n) =>
+      _isIncome ? l10n.partyCustomer : l10n.partyVendor;
 
   /// Resolves [AppTransaction.contactId] back to a [Contact] so editing an
   /// existing Business Book entry opens with its party already selected,
@@ -172,28 +178,35 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
   /// Business Book only: lets the user create their own Income/Expense
   /// category (matching this form's [widget.type]) on the spot.
   Future<void> _promptCreateCategory() async {
-    final label = _isIncome ? 'income' : 'expense';
     final nameCtrl = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Create $label category'),
-        content: TextField(
-          controller: nameCtrl,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Category name'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+      builder: (dialogContext) {
+        // Two separate keys rather than interpolating "income"/"expense"
+        // into one sentence: the noun inflects differently per language,
+        // so a single template would read wrong in most of them.
+        final l10n = AppLocalizations.of(dialogContext);
+        return AlertDialog(
+          title: Text(_isIncome
+              ? l10n.createIncomeCategory
+              : l10n.createExpenseCategory),
+          content: TextField(
+            controller: nameCtrl,
+            autofocus: true,
+            decoration: InputDecoration(labelText: l10n.categoryNameLabel),
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(nameCtrl.text.trim()),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(l10n.actionCancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(nameCtrl.text.trim()),
+              child: Text(l10n.actionCreate),
+            ),
+          ],
+        );
+      },
     );
     if (name == null || name.isEmpty || !mounted) return;
 
@@ -232,11 +245,6 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
     });
   }
 
-  bool get _hasAnyReceipt =>
-      (widget.imageFile != null && !_ocrImageRemoved) ||
-      _pickedReceiptFile != null ||
-      _keptExistingReceiptImages.isNotEmpty;
-
   bool _canSave(bool isBusiness) {
     if (_amountCtrl.text.trim().isEmpty) return false;
     // Business Book: a party must be picked from Customers/Suppliers (or
@@ -248,9 +256,12 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
     } else if (_vendorCtrl.text.trim().isEmpty) {
       return false;
     }
-    if (!isBusiness) return true; // Individual Book: nothing else required
-    // Business Book (Income and Expense): receipt is always required, no bypass.
-    return _hasAnyReceipt;
+    // The receipt attachment is optional in every book and on both the
+    // Income and Expense forms, per product decision. Real entries are
+    // routinely booked with nothing to attach (bank charges, cash
+    // payments, UPI transfers, counter sales), and blocking the save on it
+    // only pushed people into attaching something irrelevant.
+    return true;
   }
 
   Future<void> _save() async {
@@ -298,7 +309,7 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Saved')),
+        SnackBar(content: Text(AppLocalizations.of(context).savedSnack)),
       );
       if (_isEditing) {
         Navigator.of(context).pop(); // back to the transaction detail screen
@@ -332,16 +343,17 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
       );
 
   Future<void> _downloadAttachment(ReceiptImage img) async {
+    final l10n = AppLocalizations.of(context);
     try {
       final saved = await AttachmentFileService.download(img);
       if (saved && mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Downloaded.')));
+            .showSnackBar(SnackBar(content: Text(l10n.downloadedSnack)));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Could not download file: $e')));
+            .showSnackBar(SnackBar(content: Text(l10n.downloadFailed('$e'))));
       }
     }
   }
@@ -350,6 +362,10 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
   /// button) - shared by both Individual and Business layouts, just placed
   /// in a different position in the field order. Deliberately never shows
   /// a full inline preview - "View" opens one on demand instead.
+  ///
+  /// The empty state says "optional" outright: saving never blocks on a
+  /// receipt anywhere (see [_canSave]), so the form should say so rather
+  /// than leave the user to discover it.
   Widget _buildReceiptField() {
     if (widget.imageFile != null && !_ocrImageRemoved) {
       final img = _wrapFile(widget.imageFile!);
@@ -386,7 +402,7 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
     }
     return OutlinedButton.icon(
       icon: const Icon(Icons.attach_file),
-      label: const Text('Choose Receipt File (any format)'),
+      label: Text(AppLocalizations.of(context).chooseReceiptFile),
       onPressed: _pickReceiptFile,
     );
   }
@@ -394,35 +410,37 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
   @override
   Widget build(BuildContext context) {
     final isIncome = widget.type == TxType.income;
+    final l10n = AppLocalizations.of(context);
     final book = context.watch<BookProvider>().currentBook;
     final isBusiness = book?.isBusiness == true;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing
-            ? (isIncome ? 'Edit Income' : 'Edit Expense')
-            : (isIncome ? 'Review Income' : 'Review Expense')),
+            ? (isIncome ? l10n.editIncome : l10n.editExpense)
+            : (isIncome ? l10n.reviewIncome : l10n.reviewExpense)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           // Business Book: receipt goes at the top, same as the original
-          // SRS 8 flow (receipt is the first thing you deal with).
+          // SRS 8 flow (receipt is the first thing you deal with) - though
+          // it no longer blocks saving, on either form (see _canSave).
           if (isBusiness) ...[
             _buildReceiptField(),
             if (!widget.ocrResult.success && widget.imageFile != null)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  "Couldn't auto-read this receipt — please fill in the details below.",
-                  style: TextStyle(color: Colors.orange),
+                  l10n.ocrFailedBelow,
+                  style: const TextStyle(color: Colors.orange),
                 ),
               ),
             const SizedBox(height: 16),
           ],
           ListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Date'),
+            title: Text(l10n.date),
             subtitle: Text('${_date.day}/${_date.month}/${_date.year}'),
             trailing: const Icon(Icons.calendar_today),
             onTap: _pickDate,
@@ -433,12 +451,12 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
           // Book keeps the plain text field; it has no Customers/Suppliers
           // section for a picker to draw from.
           if (isBusiness) ...[
-            Text(_partyLabel, style: Theme.of(context).textTheme.titleSmall),
+            Text(_partyLabel(l10n), style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 8),
             PartyPickerField(
               bookId: book!.id,
               type: _partyType,
-              label: _partyLabel,
+              label: _partyLabel(l10n),
               selected: _selectedParty,
               onChanged: (c) => setState(() => _selectedParty = c),
             ),
@@ -447,8 +465,9 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'Receipt shows "${widget.ocrResult.vendorName}" - select or add a '
-                  'matching ${_partyLabel.toLowerCase()} above.',
+                  isIncome
+                      ? l10n.receiptShowsCustomerHint(widget.ocrResult.vendorName!)
+                      : l10n.receiptShowsVendorHint(widget.ocrResult.vendorName!),
                   style: const TextStyle(color: Colors.orange, fontSize: 12),
                 ),
               ),
@@ -456,28 +475,31 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
             TextField(
               controller: _vendorCtrl,
               decoration: InputDecoration(
-                  labelText:
-                      isIncome ? 'Payer / Customer name *' : 'Vendor name *'),
+                  labelText: isIncome
+                      ? l10n.payerCustomerNameRequired
+                      : l10n.vendorNameRequired),
               onChanged: (_) => setState(() {}),
             ),
           const SizedBox(height: 12),
           TextField(
             controller: _amountCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(labelText: isBusiness ? 'Amount (₹)' : 'Amount (₹) *'),
+            decoration: InputDecoration(
+                labelText: isBusiness ? l10n.amountLabel : l10n.amountLabelRequired),
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<Category>(
             initialValue: _category,
-            decoration: const InputDecoration(labelText: 'Category'),
+            decoration: InputDecoration(labelText: l10n.category),
             items: [
               ..._categoryOptions(isBusiness)
-                  .map((c) => DropdownMenuItem(value: c, child: Text(c.name))),
+                  .map((c) => DropdownMenuItem(
+                      value: c, child: Text(systemCategoryName(l10n, c)))),
               if (isBusiness)
                 DropdownMenuItem(
                   value: _createCategorySentinel,
-                  child: Text(_createCategorySentinel.name),
+                  child: Text(l10n.createNewCategoryOption),
                 ),
             ],
             onChanged: (v) {
@@ -491,7 +513,8 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
           const SizedBox(height: 12),
           TextField(
             controller: _notesCtrl,
-            decoration: InputDecoration(labelText: isBusiness ? 'Notes (optional)' : 'Notes'),
+            decoration: InputDecoration(
+                labelText: isBusiness ? l10n.notesOptional : l10n.notesLabel),
             maxLines: 2,
           ),
           if (!isBusiness) ...[
@@ -500,11 +523,11 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
             const SizedBox(height: 12),
             _buildReceiptField(),
             if (!widget.ocrResult.success && widget.imageFile != null)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  "Couldn't auto-read this receipt — please fill in the details above.",
-                  style: TextStyle(color: Colors.orange),
+                  l10n.ocrFailedAbove,
+                  style: const TextStyle(color: Colors.orange),
                 ),
               ),
           ],
@@ -514,7 +537,7 @@ class _OcrReviewFormScreenState extends State<OcrReviewFormScreen> {
             child: _saving
                 ? const SizedBox(
                     height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Save'),
+                : Text(l10n.actionSave),
           ),
         ],
       ),

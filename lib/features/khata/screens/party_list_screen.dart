@@ -11,6 +11,7 @@ import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_search_field.dart';
 import '../../../core/widgets/app_stat_card.dart';
 import '../../../core/widgets/money_text.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../books/providers/book_provider.dart';
 import '../services/customer_excel_service.dart';
 import '../services/khata_balance.dart';
@@ -57,7 +58,9 @@ class PartyListScreenState extends State<PartyListScreen> {
   int _youPayPaise = 0;
 
   bool get _isCustomer => widget.type == ContactType.customer;
-  String get _sectionTitle => _isCustomer ? 'Customers' : 'Suppliers';
+
+  String _sectionTitleOf(AppLocalizations l10n) =>
+      _isCustomer ? l10n.customers : l10n.suppliers;
 
   @override
   void didChangeDependencies() {
@@ -145,10 +148,11 @@ class PartyListScreenState extends State<PartyListScreen> {
   /// the Individual Book Excel export - lets the user see/pick exactly
   /// where it lands, e.g. Downloads).
   Future<void> downloadCustomersExcel() async {
+    final l10n = AppLocalizations.of(context);
     final withDue = _all.where((c) => (_balanceByContactId[c.id] ?? 0) > 0).toList();
     if (withDue.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No customers with an outstanding amount to export.')),
+        SnackBar(content: Text(l10n.noCustomersWithOutstanding)),
       );
       return;
     }
@@ -161,24 +165,24 @@ class PartyListScreenState extends State<PartyListScreen> {
       // null means the user cancelled the save dialog - not an error.
       if (path != null && mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Excel file saved.')));
+            .showSnackBar(SnackBar(content: Text(l10n.exportExcelSaved)));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Could not save Excel file: $e')));
+            .showSnackBar(SnackBar(content: Text(l10n.exportExcelFailed('$e'))));
       }
     }
   }
 
-  String _sortLabel(_SortOption o) {
+  String _sortLabel(AppLocalizations l10n, _SortOption o) {
     switch (o) {
       case _SortOption.recentlyUpdated:
-        return 'Recently updated';
+        return l10n.sortRecentlyUpdated;
       case _SortOption.outstandingHighToLow:
-        return 'Outstanding: High to low';
+        return l10n.sortOutstandingHighToLow;
       case _SortOption.nameAZ:
-        return 'Name: A-Z';
+        return l10n.sortNameAZ;
     }
   }
 
@@ -190,17 +194,19 @@ class PartyListScreenState extends State<PartyListScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final access = bookProvider.accessFor(book);
+    final l10n = AppLocalizations.of(context);
+    final sectionTitle = _sectionTitleOf(l10n);
 
     return Scaffold(
       appBar: widget.embedded
           ? null
           : AppBar(
-              title: Text(_sectionTitle),
+              title: Text(sectionTitle),
               actions: [
                 if (_isCustomer)
                   IconButton(
                     icon: const Icon(Icons.file_download_outlined),
-                    tooltip: 'Download customers with outstanding amount (Excel)',
+                    tooltip: l10n.downloadCustomersOutstandingExcel,
                     onPressed: downloadCustomersExcel,
                   ),
               ],
@@ -222,7 +228,7 @@ class PartyListScreenState extends State<PartyListScreen> {
                       children: [
                         Expanded(
                           child: AppStatCard(
-                            label: 'You Collect',
+                            label: l10n.youCollect,
                             amountPaise: _youCollectPaise,
                             tone: AppTone.positive,
                             icon: Icons.call_received,
@@ -231,7 +237,7 @@ class PartyListScreenState extends State<PartyListScreen> {
                         const SizedBox(width: AppSpacing.md),
                         Expanded(
                           child: AppStatCard(
-                            label: 'You Pay',
+                            label: l10n.youPay,
                             amountPaise: _youPayPaise,
                             tone: AppTone.negative,
                             icon: Icons.call_made,
@@ -249,14 +255,19 @@ class PartyListScreenState extends State<PartyListScreen> {
                       Expanded(
                         child: AppSearchField(
                           controller: _searchCtrl,
-                          hintText: 'Search ${_sectionTitle.toLowerCase()} by name',
+                          // Per-type keys rather than lower-casing the
+                          // section noun: most of the supported scripts
+                          // have no letter case for toLowerCase to change.
+                          hintText: _isCustomer
+                              ? l10n.searchCustomerHint
+                              : l10n.searchSupplierHint,
                           onChanged: (_) => setState(_applyFilters),
                         ),
                       ),
                       const SizedBox(width: AppSpacing.xs),
                       PopupMenuButton<_SortOption>(
                         icon: const Icon(Icons.sort),
-                        tooltip: 'Sort by',
+                        tooltip: l10n.sortBy,
                         onSelected: (o) => setState(() {
                           _sort = o;
                           _applyFilters();
@@ -271,7 +282,7 @@ class PartyListScreenState extends State<PartyListScreen> {
                                       else
                                         const SizedBox(width: 18),
                                       const SizedBox(width: 8),
-                                      Text(_sortLabel(o)),
+                                      Text(_sortLabel(l10n, o)),
                                     ],
                                   ),
                                 ))
@@ -289,12 +300,15 @@ class PartyListScreenState extends State<PartyListScreen> {
                                   icon: _isCustomer
                                       ? Icons.people_outline
                                       : Icons.local_shipping_outlined,
-                                  title: 'No ${_sectionTitle.toLowerCase()} yet',
-                                  message:
-                                      'Add a ${_isCustomer ? 'customer' : 'supplier'} to start '
-                                      'tracking what they owe you and what you owe them.',
-                                  actionLabel:
-                                      _isCustomer ? 'Add Customer' : 'Add Supplier',
+                                  title: _isCustomer
+                                      ? l10n.noCustomersYet
+                                      : l10n.noSuppliersYet,
+                                  message: _isCustomer
+                                      ? l10n.noCustomersYetMessage
+                                      : l10n.noSuppliersYetMessage,
+                                  actionLabel: _isCustomer
+                                      ? l10n.addCustomer
+                                      : l10n.addSupplier,
                                   onAction: () async {
                                     await Navigator.push(
                                       context,
@@ -306,11 +320,10 @@ class PartyListScreenState extends State<PartyListScreen> {
                                     _load();
                                   },
                                 )
-                              : const AppEmptyState(
+                              : AppEmptyState(
                                   icon: Icons.search_off,
-                                  title: 'No matches',
-                                  message:
-                                      'No one here matches that search. Try a different name.',
+                                  title: l10n.noMatches,
+                                  message: l10n.noPartyMatchesSearch,
                                 ))
                           : RefreshIndicator(
                               onRefresh: _load,
@@ -352,7 +365,7 @@ class PartyListScreenState extends State<PartyListScreen> {
       floatingActionButton: access.writable
           ? FloatingActionButton.extended(
               icon: const Icon(Icons.add),
-              label: Text(_isCustomer ? 'Add Customer' : 'Add Supplier'),
+              label: Text(_isCustomer ? l10n.addCustomer : l10n.addSupplier),
               onPressed: () async {
                 await Navigator.push(
                   context,
@@ -368,12 +381,13 @@ class PartyListScreenState extends State<PartyListScreen> {
   }
 
   Widget _buildLockedState(BookAccessResult access) {
+    final l10n = AppLocalizations.of(context);
     return AppEmptyState(
       icon: Icons.lock_outline,
-      title: 'This book is locked',
-      message: BookAccessService.messageFor(access.reason),
+      title: l10n.bookLockedTitle,
+      message: BookAccessService.messageFor(l10n, access.reason),
       tone: AppTone.warning,
-      actionLabel: 'Switch Active Book / Upgrade',
+      actionLabel: l10n.switchBookOrUpgrade,
       onAction: () => Navigator.pushNamed(context, '/settings/manage-books'),
     );
   }
@@ -412,9 +426,10 @@ class _PartyRow extends StatelessWidget {
     final tone = settled
         ? AppTone.neutral
         : (owedToBusiness ? AppTone.positive : AppTone.negative);
+    final l10n = AppLocalizations.of(context);
     final caption = settled
-        ? 'Settled'
-        : (owedToBusiness ? "You'll get" : "You'll pay");
+        ? l10n.settledUp
+        : (owedToBusiness ? l10n.youWillGet : l10n.youWillPay);
 
     return Material(
       color: tones.surface,

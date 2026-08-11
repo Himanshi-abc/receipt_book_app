@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:receipt_book/core/design/app_theme.dart';
 import 'package:receipt_book/core/models/contact_model.dart';
 import 'package:receipt_book/features/khata/widgets/party_picker_field.dart';
+import 'package:receipt_book/l10n/app_localizations.dart';
 
 /// The shared party picker used by both Bills (CreateBillScreen) and the
 /// Business Book Register (OcrReviewFormScreen).
@@ -17,6 +18,9 @@ import 'package:receipt_book/features/khata/widgets/party_picker_field.dart';
 /// themselves.
 void main() {
   Widget host(Widget child) => MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        
         theme: AppTheme.light(),
         home: Scaffold(body: Padding(padding: const EdgeInsets.all(16), child: child)),
       );
@@ -40,8 +44,14 @@ void main() {
       expect(find.byType(Card), findsNothing);
     });
 
-    testWidgets('the label drives both action buttons for Vendor too',
-        (tester) async {
+    testWidgets('the party type, not the caller\'s label, drives both action '
+        'buttons', (tester) async {
+      // These buttons used to be built as 'Select $label' + 'Add $label'.
+      // Gluing a verb onto a translated noun only produces a grammatical
+      // phrase in English, so each type now maps to a whole translated
+      // sentence and `label` no longer reaches them. A vendor picker
+      // therefore reads "Supplier" (the Parties section's noun) even when
+      // the caller passed the older 'Vendor' wording.
       await tester.pumpWidget(host(
         PartyPickerField(
           bookId: 'book-1',
@@ -52,8 +62,9 @@ void main() {
         ),
       ));
 
-      expect(find.text('Select Vendor'), findsOneWidget);
-      expect(find.text('Add Vendor'), findsOneWidget);
+      expect(find.text('Select Supplier'), findsOneWidget);
+      expect(find.text('Add Supplier'), findsOneWidget);
+      expect(find.textContaining('Vendor'), findsNothing);
     });
   });
 

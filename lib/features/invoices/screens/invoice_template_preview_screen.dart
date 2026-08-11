@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../core/design/app_colors.dart';
 import '../../../core/design/app_spacing.dart';
 import '../../../core/models/invoice_template.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../books/providers/book_provider.dart';
 import '../services/dummy_invoice_data.dart';
 import '../services/invoice_pdf_service.dart';
@@ -78,7 +79,9 @@ class _InvoiceTemplatePreviewScreenState
     final tones = context.tones;
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.style.name)),
+      appBar: AppBar(
+          title: Text(invoiceTemplateName(
+              AppLocalizations.of(context), widget.style))),
       // A neutral backdrop rather than the page colour, so the edges of the
       // sheet are visible and it reads as a document rather than as the
       // screen's own background.
@@ -99,7 +102,7 @@ class _InvoiceTemplatePreviewScreenState
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Sample invoice with placeholder data.',
+                    AppLocalizations.of(context).sampleInvoiceWithPlaceholderData,
                     style: theme.textTheme.labelSmall
                         ?.copyWith(color: tones.textTertiary),
                   ),
@@ -118,7 +121,7 @@ class _InvoiceTemplatePreviewScreenState
                               color: Colors.white,
                             ),
                           )
-                        : const Text('Use This Template'),
+                        : Text(AppLocalizations.of(context).useThisTemplate),
                   ),
                 ],
               ),
@@ -140,13 +143,12 @@ class _InvoiceTemplatePreviewScreenState
               Icon(Icons.broken_image_outlined, size: 40, color: tones.textTertiary),
               const SizedBox(height: AppSpacing.md),
               Text(
-                "Couldn't render this sample.",
+                AppLocalizations.of(context).couldNotRenderSample,
                 style: theme.textTheme.titleSmall,
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                'You can still apply the template - your real invoices are '
-                'generated separately.',
+                AppLocalizations.of(context).canStillApplyTemplate,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(color: tones.textTertiary),
               ),

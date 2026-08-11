@@ -1,3 +1,4 @@
+import '../../l10n/app_localizations.dart';
 import 'transaction_model.dart';
 
 class Category {
@@ -93,3 +94,32 @@ class Category {
   @override
   int get hashCode => id.hashCode;
 }
+
+/// The translated display name for a system (built-in) category.
+///
+/// The `name` stored on the [Category] itself is the English seed value and
+/// must stay that way: it is written into Firestore/SQLite rows and, for
+/// transactions saved before this mapper existed, is the only record of
+/// which category was chosen. Only the `sys_*` / `ind_*` id is stable, so
+/// display names are resolved from the id here and never re-saved.
+///
+/// A user-created category falls through to its own name, which is exactly
+/// what the user typed and so is never translated.
+String systemCategoryName(AppLocalizations l10n, Category category) =>
+    switch (category.id) {
+      'sys_sales' => l10n.categorySales,
+      'sys_salary_income' => l10n.categorySalaryIncome,
+      'sys_other_income' => l10n.categoryOtherIncome,
+      'sys_rent' || 'ind_rent' => l10n.categoryRent,
+      'sys_travel' || 'ind_travel' => l10n.categoryTravel,
+      'sys_office_supplies' => l10n.categoryOfficeSupplies,
+      'sys_utilities' => l10n.categoryUtilities,
+      'sys_salary_paid' => l10n.categorySalaryPaid,
+      'sys_misc' => l10n.categoryMiscellaneous,
+      'ind_family_education' => l10n.categoryFamilyEducation,
+      'ind_insurance_health' => l10n.categoryInsuranceHealth,
+      'ind_savings_investments' => l10n.categorySavingsInvestments,
+      'ind_donations' => l10n.categoryDonations,
+      'ind_other' => l10n.categoryOther,
+      _ => category.name,
+    };

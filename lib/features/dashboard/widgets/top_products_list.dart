@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+
+import '../../../l10n/app_localizations.dart';
+import '../../../core/design/app_colors.dart';
+import '../../../core/design/app_spacing.dart';
 import '../models/dashboard_data.dart';
 
 /// Mirrors TopContactsList's layout, keyed on quantity sold instead of an
@@ -14,25 +18,38 @@ class TopProductsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final tones = context.tones;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-        const SizedBox(height: 6),
+        Text(title, style: theme.textTheme.labelLarge),
+        const SizedBox(height: AppSpacing.xs),
         if (products.isEmpty)
-          const Text('No data yet.', style: TextStyle(color: Colors.grey, fontSize: 12))
+          Text(
+            l10n.noDataYet,
+            style: theme.textTheme.bodySmall?.copyWith(color: tones.textTertiary),
+          )
         else
           ...products.map((p) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
-                      child: Text(p.name,
-                          style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        p.name,
+                        style: theme.textTheme.bodyMedium,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    Text('${_formatQty(p.qty)} sold',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text(
+                      l10n.qtySold(_formatQty(p.qty)),
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
                   ],
                 ),
               )),
